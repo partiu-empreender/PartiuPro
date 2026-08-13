@@ -46,7 +46,12 @@ export async function calculateDistance(origin: LatLng, destination: LatLng): Pr
       throw new Error(`Google Maps API error: ${response.data.status}`);
     }
 
-    const distance = response.data.rows[0].elements[0].distance.value / 1000; // Convert to km
+    const element = response.data.rows[0]?.elements[0];
+    if (!element) {
+      throw new Error('Google Maps API returned no distance data');
+    }
+
+    const distance = element.distance.value / 1000; // Convert to km
     return distance;
   } catch (error) {
     console.error('Distance calculation error:', error);
@@ -70,13 +75,17 @@ export async function calculateRoute(
 
     const allPoints = [startPoint, ...waypoints];
     const waypointsStr = waypoints.slice(0, -1).map((p) => `${p.lat},${p.lng}`).join('|');
+    const destination = waypoints[waypoints.length - 1];
+    if (!destination) {
+      throw new Error('At least one waypoint is required');
+    }
 
     const response = await axios.get<DirectionsResponse>(
       'https://maps.googleapis.com/maps/api/directions/json',
       {
         params: {
           origin: `${startPoint.lat},${startPoint.lng}`,
-          destination: `${waypoints[waypoints.length - 1].lat},${waypoints[waypoints.length - 1].lng}`,
+          destination: `${destination.lat},${destination.lng}`,
           ...(waypointsStr && { waypoints: waypointsStr }),
           key: process.env.GOOGLE_MAPS_API_KEY,
           optimize: 'true',
@@ -89,6 +98,9 @@ export async function calculateRoute(
     }
 
     const route = response.data.routes[0];
+    if (!route) {
+      throw new Error('Google Maps API returned no route data');
+    }
     const legs = route.legs;
 
     const totalDistance = legs.reduce((sum, leg) => sum + leg.distance.value, 0) / 1000; // km

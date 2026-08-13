@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,22 +10,37 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-// Client-side Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
 // Server-side Supabase client for Server Components
 export async function getServerSupabaseClient() {
   const cookieStore = await cookies();
-  return createServerComponentClient({ cookies: () => cookieStore });
+  return createServerClient(supabaseUrl!, supabaseAnonKey!, {
+    cookies: {
+      getAll: () => cookieStore.getAll(),
+      setAll: (cookiesToSet) => {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+        } catch {
+          // Called from a Server Component — safe to ignore when middleware refreshes sessions
+        }
+      },
+    },
+  });
 }
 
 // Route Handler Supabase client
 export async function getRouteHandlerSupabaseClient() {
   const cookieStore = await cookies();
-  return createRouteHandlerClient({ cookies: () => cookieStore });
+  return createServerClient(supabaseUrl!, supabaseAnonKey!, {
+    cookies: {
+      getAll: () => cookieStore.getAll(),
+      setAll: (cookiesToSet) => {
+        cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+      },
+    },
+  });
 }
 
-// Service Role client (for admin operations)
+// Service Role client (for admin operations) — never import this from a 'use client' file
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || '', {
   auth: {
     autoRefreshToken: false,
@@ -122,29 +136,4 @@ export async function getWorkspaceStats(workspaceId: string) {
     new_customers: recentCustomers.length,
     total_products: products.data?.length || 0,
   };
-}
-
-// Cache helpers
-const cache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-export function getCachedData<T>(key: string): T | null {
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data as T;
-  }
-  cache.delete(key);
-  return null;
-}
-
-export function setCachedData<T>(key: string, data: T): void {
-  cache.set(key, { data, timestamp: Date.now() });
-}
-
-export function invalidateCache(pattern: string): void {
-  for (const key of cache.keys()) {
-    if (key.includes(pattern)) {
-      cache.delete(key);
-    }
-  }
 }

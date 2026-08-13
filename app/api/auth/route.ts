@@ -1,4 +1,4 @@
-import { getRouteHandlerSupabaseClient } from '@/lib/supabase';
+import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { generateSlug, validateEmail, validatePhoneNumber } from '@/lib/utils';
 import { NextResponse } from 'next/server';
 

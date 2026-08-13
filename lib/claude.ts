@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { getRouteHandlerSupabaseClient } from './supabase';
+import { getRouteHandlerSupabaseClient } from './supabase-server';
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
