@@ -13,11 +13,14 @@ import {
   DollarSign,
   CalendarDays,
   Trash2,
+  TrendingUp,
 } from 'lucide-react';
 
 interface MetricasVendas {
   vendas: number; // Número de TRANSAÇÕES (1 cliente = 1 venda, múltiplos itens)
-  pa: number; // Produtos por Atendimento (quantidade de itens / número de vendas)
+  pa: number; // Produtos por Atendimento (quantidade de itens / pessoas atendidas hoje)
+  conversao: number; // Vendas ÷ pessoas atendidas hoje, em %
+  atendimentos_hoje: number;
   faturamento_total: number;
   ticket_medio: number;
   faturamento_mes: number;
@@ -52,6 +55,8 @@ export default function DashboardPage() {
   const [metricas, setMetricas] = useState<MetricasVendas>({
     vendas: 0,
     pa: 0,
+    conversao: 0,
+    atendimentos_hoje: 0,
     faturamento_total: 0,
     ticket_medio: 0,
     faturamento_mes: 0,
@@ -166,9 +171,18 @@ export default function DashboardPage() {
     {
       title: 'PA (Produtos/Atendimento)',
       value: metricas.pa.toFixed(2),
-      description: 'Média de itens por venda',
+      description: `Itens vendidos ÷ ${metricas.atendimentos_hoje} atendimento(s) hoje`,
       icon: Package,
       color: 'text-purple-600',
+    },
+    {
+      title: 'Conversão',
+      value: `${metricas.conversao.toFixed(1)}%`,
+      description: metricas.atendimentos_hoje > 0
+        ? 'Vendas ÷ pessoas atendidas hoje'
+        : 'Registre os atendimentos de hoje pra calcular',
+      icon: TrendingUp,
+      color: 'text-emerald-600',
     },
     {
       title: 'Ticket Médio',
@@ -187,7 +201,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
       <div className="container mx-auto p-6">
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -202,7 +216,7 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8">
           {metricasCards.map((metrica, index) => {
             const Icon = metrica.icon;
             return (
@@ -358,6 +372,6 @@ export default function DashboardPage() {
           </Card>
         </div>
       )}
-    </div>
+    </>
   );
 }

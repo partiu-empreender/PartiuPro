@@ -53,13 +53,35 @@ export interface ProductCategory {
 export interface Product {
   id: string;
   workspace_id: string;
-  category_id: string;
+  category_id?: string;
   name: string;
   description: string;
   price: number;
+  cost: number;
   image_url?: string;
   stock?: number;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Atendimentos diários (pessoas abordadas, mesmo sem venda — base da conversão)
+export interface AtendimentoDiario {
+  id: string;
+  workspace_id: string;
+  data: string;
+  pessoas_atendidas: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Meta mensal de faturamento
+export interface Meta {
+  id: string;
+  workspace_id: string;
+  mes: number;
+  ano: number;
+  meta_mensal: number;
   created_at: string;
   updated_at: string;
 }

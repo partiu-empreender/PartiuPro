@@ -213,31 +213,46 @@ export async function GET(request: NextRequest) {
     const hoje = agora.toISOString().split('T')[0];
     const primeiroDiaDoMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().split('T')[0];
 
-    const { data: vendasDoMes, error: vendasError } = await supabase
-      .from('vendas_diarias')
-      .select(
-        `
-        id,
-        data,
-        cliente_nome,
-        faturamento_total,
-        status,
-        venda_itens (
+    const [{ data: vendasDoMes, error: vendasError }, { data: atendimentosDoDia, error: atendimentosError }] =
+      await Promise.all([
+        supabase
+          .from('vendas_diarias')
+          .select(
+            `
           id,
-          produto_nome,
-          quantidade,
-          preco_unitario,
-          subtotal
-        )
-      `
-      )
-      .eq('workspace_id', user.id)
-      .gte('data', primeiroDiaDoMes)
-      .order('created_at', { ascending: false });
+          data,
+          cliente_nome,
+          faturamento_total,
+          status,
+          venda_itens (
+            id,
+            produto_nome,
+            quantidade,
+            preco_unitario,
+            subtotal
+          )
+        `
+          )
+          .eq('workspace_id', user.id)
+          .gte('data', primeiroDiaDoMes)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('atendimentos_diarios')
+          .select('pessoas_atendidas')
+          .eq('workspace_id', user.id)
+          .eq('data', hoje)
+          .maybeSingle(),
+      ]);
 
     if (vendasError) {
       return NextResponse.json(
         { error: 'Erro ao buscar vendas', details: vendasError.message },
+        { status: 500 }
+      );
+    }
+    if (atendimentosError) {
+      return NextResponse.json(
+        { error: 'Erro ao buscar atendimentos', details: atendimentosError.message },
         { status: 500 }
       );
     }
@@ -247,14 +262,18 @@ export async function GET(request: NextRequest) {
     // ============================================
     // CÁLCULO DE MÉTRICAS
     // ============================================
+    // PA e Conversão usam "atendimentos" (pessoas abordadas, mesmo sem
+    // compra) como denominador — não o número de vendas.
 
     const vendas_count = vendas.length;
+    const atendimentos_hoje = atendimentosDoDia?.pessoas_atendidas ?? 0;
 
     const totalItens = vendas.reduce((sum, venda) => {
       return sum + (venda.venda_itens?.reduce((itemSum, item) => itemSum + item.quantidade, 0) || 0);
     }, 0);
 
-    const pa = vendas_count > 0 ? totalItens / vendas_count : 0;
+    const pa = atendimentos_hoje > 0 ? totalItens / atendimentos_hoje : 0;
+    const conversao = atendimentos_hoje > 0 ? (vendas_count / atendimentos_hoje) * 100 : 0;
     const faturamento_total = vendas.reduce((sum, venda) => sum + venda.faturamento_total, 0);
     const ticket_medio = vendas_count > 0 ? faturamento_total / vendas_count : 0;
     const faturamento_mes = (vendasDoMes || []).reduce((sum, venda) => sum + venda.faturamento_total, 0);
@@ -265,6 +284,8 @@ export async function GET(request: NextRequest) {
       metricas: {
         vendas: vendas_count,
         pa: parseFloat(pa.toFixed(2)),
+        conversao: parseFloat(conversao.toFixed(2)),
+        atendimentos_hoje,
         faturamento_total,
         ticket_medio: parseFloat(ticket_medio.toFixed(2)),
         faturamento_mes: parseFloat(faturamento_mes.toFixed(2)),

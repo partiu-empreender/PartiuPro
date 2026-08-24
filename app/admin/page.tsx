@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
-import { isCurrentUserAdmin, supabaseAdmin } from '@/lib/supabase-server';
+import { getCurrentUserWithWorkspace, isCurrentUserAdmin, supabaseAdmin } from '@/lib/supabase-server';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import Navbar from '@/components/shared/Navbar';
 
 interface AlunaResumo {
   id: string;
@@ -54,12 +55,16 @@ export default async function AdminPage() {
     redirect('/dashboard');
   }
 
+  const result = await getCurrentUserWithWorkspace();
+  const nome = result?.userData?.full_name || result?.user?.email || 'Mentora';
+
   const alunas = await carregarResumoAlunas();
   const faturamentoTotal = alunas.reduce((sum, a) => sum + a.faturamento_30d, 0);
   const alunasAtivas = alunas.filter((a) => a.vendas_30d > 0).length;
 
   return (
     <div className="min-h-screen bg-background">
+      <Navbar nome={nome} isAdmin={isAdmin} />
       <div className="container mx-auto p-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">Painel Administrativo</h1>
