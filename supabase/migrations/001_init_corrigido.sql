@@ -14,6 +14,7 @@ CREATE TABLE users (
   full_name TEXT NOT NULL,
   avatar_url TEXT,
   workspace_slug TEXT UNIQUE NOT NULL,
+  is_admin BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
@@ -83,7 +84,7 @@ CREATE TABLE customers (
 CREATE TABLE vendas_diarias (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES users(id),
-  customer_id UUID NOT NULL REFERENCES customers(id),
+  customer_id UUID REFERENCES customers(id),
   data DATE NOT NULL,
   cliente_nome TEXT,
   bairro TEXT,
@@ -98,12 +99,13 @@ CREATE TABLE vendas_diarias (
 );
 
 -- Create venda_itens table
--- Um registro por PRODUTO na venda
--- Uma venda pode ter múltiplos produtos
+-- Um registro por ITEM na venda (avulso, digitado na hora — sem depender de catálogo de produto)
+-- Uma venda pode ter múltiplos itens
 CREATE TABLE venda_itens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   venda_id UUID NOT NULL REFERENCES vendas_diarias(id) ON DELETE CASCADE,
-  produto_id UUID NOT NULL REFERENCES products(id),
+  produto_id UUID REFERENCES products(id),
+  produto_nome TEXT NOT NULL,
   quantidade INTEGER NOT NULL DEFAULT 1,
   preco_unitario DECIMAL(10, 2) NOT NULL,
   subtotal DECIMAL(10, 2) NOT NULL,
@@ -268,6 +270,9 @@ CREATE POLICY "Users can create vendas" ON vendas_diarias
 
 CREATE POLICY "Users can update their vendas" ON vendas_diarias
   FOR UPDATE USING (auth.uid() = workspace_id);
+
+CREATE POLICY "Users can delete their vendas" ON vendas_diarias
+  FOR DELETE USING (auth.uid() = workspace_id);
 
 -- RLS Policies for venda_itens
 CREATE POLICY "Users can read their venda_itens" ON venda_itens

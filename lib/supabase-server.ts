@@ -74,6 +74,13 @@ export async function getCurrentUserWithWorkspace() {
   return { user, userData };
 }
 
+// Admin-only helper — throws-free redirect is left to the caller (server component/page),
+// this just resolves whether the current session belongs to an admin account.
+export async function isCurrentUserAdmin() {
+  const result = await getCurrentUserWithWorkspace();
+  return Boolean(result?.userData?.is_admin);
+}
+
 export async function getUserWorkspaceSlug() {
   const supabase = await getServerSupabaseClient();
   const {

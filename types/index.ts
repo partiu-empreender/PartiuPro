@@ -5,7 +5,38 @@ export interface User {
   full_name: string;
   avatar_url?: string;
   workspace_slug: string;
+  is_admin: boolean;
   created_at: string;
+}
+
+// Vendas (venda do dia, com itens avulsos — sem depender de catálogo de produto)
+export interface VendaItem {
+  id: string;
+  venda_id: string;
+  produto_id?: string;
+  produto_nome: string;
+  quantidade: number;
+  preco_unitario: number;
+  subtotal: number;
+  created_at: string;
+}
+
+export interface VendaDiaria {
+  id: string;
+  workspace_id: string;
+  customer_id?: string;
+  data: string;
+  cliente_nome: string;
+  bairro?: string;
+  faturamento_total: number;
+  status: 'draft' | 'pending' | 'confirmed' | 'delivered' | 'cancelled';
+  delivery_date?: string;
+  delivery_period?: 'morning' | 'afternoon' | 'evening';
+  shipping_cost: number;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  venda_itens?: VendaItem[];
 }
 
 // Products

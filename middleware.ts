@@ -24,12 +24,10 @@ export async function middleware(request: NextRequest) {
   await supabase.auth.getSession();
 
   // Protected routes
-  const protectedRoutes = ['/dashboard', '/api/protected'];
-  const publicRoutes = ['/auth/login', '/auth/signup', '/storefront'];
+  const protectedRoutes = ['/dashboard', '/admin'];
 
   const pathname = request.nextUrl.pathname;
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
   if (isProtectedRoute) {
     const {
@@ -38,7 +36,7 @@ export async function middleware(request: NextRequest) {
 
     if (!session) {
       // Redirect to login if not authenticated
-      const loginUrl = new URL('/auth/login', request.url);
+      const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('redirectTo', pathname);
       return NextResponse.redirect(loginUrl);
     }

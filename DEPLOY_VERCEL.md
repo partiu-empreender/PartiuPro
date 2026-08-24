@@ -21,13 +21,9 @@ Ainda na tela de import, existe uma seção **"Environment Variables"**. Adicion
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Painel do Supabase → Project Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Painel do Supabase → Project Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | Painel do Supabase → Project Settings → API (chave secreta, não compartilhar) |
-| `ANTHROPIC_API_KEY` | Console da Anthropic (console.anthropic.com) |
-| `GOOGLE_MAPS_API_KEY` | Google Cloud Console |
-| `WHATSAPP_PHONE_NUMBER_ID` | Meta for Developers (WhatsApp Business API) |
-| `WHATSAPP_API_TOKEN` | Meta for Developers (WhatsApp Business API) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Painel do Supabase → Project Settings → API (chave secreta, não compartilhar — usada só na área administrativa) |
 
-> Se algum desses serviços (Supabase, WhatsApp, etc.) ainda não estiver configurado, pode colocar qualquer texto por enquanto — o site sobe, mas essa função específica não vai funcionar até a chave real ser adicionada depois em **Project Settings → Environment Variables**.
+> Quando novas integrações (IA, mapas, WhatsApp etc.) entrarem no roadmap, essa tabela cresce junto. Por enquanto é só isso.
 
 ## 4. Deploy
 1. Clique em **"Deploy"**

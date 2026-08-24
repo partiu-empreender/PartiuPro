@@ -9,10 +9,10 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 
 interface VendaItem {
-  produto_id: string;
+  produto_nome: string;
   quantidade: number;
   preco_unitario: number;
 }
@@ -30,6 +30,8 @@ interface RegistrarVendaRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await getRouteHandlerSupabaseClient();
+
     // Validação de autenticação
     const {
       data: { user },
@@ -52,6 +54,13 @@ export async function POST(request: NextRequest) {
         {
           error: 'Cliente e itens são obrigatórios',
         },
+        { status: 400 }
+      );
+    }
+
+    if (body.items.some((item) => !item.produto_nome?.trim())) {
+      return NextResponse.json(
+        { error: 'Todo item precisa de um nome' },
         { status: 400 }
       );
     }
@@ -104,7 +113,7 @@ export async function POST(request: NextRequest) {
 
     const itemsParaInserir = body.items.map((item) => ({
       venda_id: vendaDiaria.id,
-      produto_id: item.produto_id,
+      produto_nome: item.produto_nome.trim(),
       quantidade: item.quantidade,
       preco_unitario: item.preco_unitario,
       subtotal: item.quantidade * item.preco_unitario,
@@ -188,6 +197,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = await getRouteHandlerSupabaseClient();
+
     const {
       data: { user },
       error: authError,
@@ -197,10 +208,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // Busca as vendas do dia
-    const hoje = new Date().toISOString().split('T')[0];
+    // Busca as vendas do mês (a lista exibida no dashboard filtra só as de hoje a partir daqui)
+    const agora = new Date();
+    const hoje = agora.toISOString().split('T')[0];
+    const primeiroDiaDoMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().split('T')[0];
 
-    const { data: vendas, error: vendasError } = await supabase
+    const { data: vendasDoMes, error: vendasError } = await supabase
       .from('vendas_diarias')
       .select(
         `
@@ -211,6 +224,7 @@ export async function GET(request: NextRequest) {
         status,
         venda_itens (
           id,
+          produto_nome,
           quantidade,
           preco_unitario,
           subtotal
@@ -218,7 +232,7 @@ export async function GET(request: NextRequest) {
       `
       )
       .eq('workspace_id', user.id)
-      .eq('data', hoje)
+      .gte('data', primeiroDiaDoMes)
       .order('created_at', { ascending: false });
 
     if (vendasError) {
@@ -228,30 +242,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const vendas = (vendasDoMes || []).filter((venda) => venda.data === hoje);
+
     // ============================================
     // CÁLCULO DE MÉTRICAS
     // ============================================
 
-    const atendimentos = vendas?.length || 0;
-    const vendas_count = vendas?.length || 0;
+    const vendas_count = vendas.length;
 
-    const totalItens = vendas?.reduce((sum, venda) => {
+    const totalItens = vendas.reduce((sum, venda) => {
       return sum + (venda.venda_itens?.reduce((itemSum, item) => itemSum + item.quantidade, 0) || 0);
-    }, 0) || 0;
+    }, 0);
 
     const pa = vendas_count > 0 ? totalItens / vendas_count : 0;
-    const faturamento_total = vendas?.reduce((sum, venda) => sum + venda.faturamento_total, 0) || 0;
+    const faturamento_total = vendas.reduce((sum, venda) => sum + venda.faturamento_total, 0);
     const ticket_medio = vendas_count > 0 ? faturamento_total / vendas_count : 0;
+    const faturamento_mes = (vendasDoMes || []).reduce((sum, venda) => sum + venda.faturamento_total, 0);
 
     return NextResponse.json({
       success: true,
-      vendas: vendas || [],
+      vendas,
       metricas: {
-        atendimentos,
         vendas: vendas_count,
         pa: parseFloat(pa.toFixed(2)),
         faturamento_total,
         ticket_medio: parseFloat(ticket_medio.toFixed(2)),
+        faturamento_mes: parseFloat(faturamento_mes.toFixed(2)),
         total_itens: totalItens,
       },
     });
