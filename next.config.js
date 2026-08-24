@@ -40,15 +40,6 @@ const nextConfig = {
       },
     ];
   },
-  redirects: async () => {
-    return [
-      {
-        source: '/dashboard',
-        destination: '/dashboard/overview',
-        permanent: true,
-      },
-    ];
-  },
 };
 
 module.exports = nextConfig;
