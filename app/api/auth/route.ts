@@ -1,4 +1,4 @@
-import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
+import { getRouteHandlerSupabaseClient, supabaseAdmin } from '@/lib/supabase-server';
 import { generateSlug, validateEmail, validatePhoneNumber } from '@/lib/utils';
 import { NextResponse } from 'next/server';
 
@@ -47,25 +47,31 @@ export async function POST(request: Request) {
       // Generate workspace slug
       const workspaceSlug = generateSlug(full_name);
 
-      // Create user profile
-      const { error: profileError } = await supabase
+      // Create user profile — usa o cliente admin (bypassa RLS) porque
+      // nesse ponto ainda não existe sessão (falta confirmar o e-mail),
+      // então auth.uid() é nulo e a policy "auth.uid() = id" bloquearia
+      // o insert feito com o cliente autenticado por sessão.
+      const { error: profileError } = await supabaseAdmin
         .from('users')
-        .insert({
-          id: authData.user.id,
-          email,
-          full_name,
-          workspace_slug: workspaceSlug,
-        });
+        .upsert(
+          {
+            id: authData.user.id,
+            email,
+            full_name,
+            workspace_slug: workspaceSlug,
+          },
+          { onConflict: 'id' },
+        );
 
       if (profileError) {
         return NextResponse.json(
-          { error: 'Falha ao criar perfil' },
+          { error: 'Falha ao criar perfil', details: profileError.message },
           { status: 500 },
         );
       }
 
-      // Create default assistant settings
-      const { error: assistantError } = await supabase
+      // Create default assistant settings (mesmo motivo: sem sessão ainda)
+      const { error: assistantError } = await supabaseAdmin
         .from('assistant_settings')
         .insert({
           workspace_id: authData.user.id,
