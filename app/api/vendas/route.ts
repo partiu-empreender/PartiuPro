@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
+import { calcularMetricasVendas } from '@/lib/metrics';
 
 interface VendaItem {
   produto_nome: string;
@@ -258,39 +259,13 @@ export async function GET(request: NextRequest) {
     }
 
     const vendas = (vendasDoMes || []).filter((venda) => venda.data === hoje);
-
-    // ============================================
-    // CÁLCULO DE MÉTRICAS
-    // ============================================
-    // PA e Conversão usam "atendimentos" (pessoas abordadas, mesmo sem
-    // compra) como denominador — não o número de vendas.
-
-    const vendas_count = vendas.length;
     const atendimentos_hoje = atendimentosDoDia?.pessoas_atendidas ?? 0;
-
-    const totalItens = vendas.reduce((sum, venda) => {
-      return sum + (venda.venda_itens?.reduce((itemSum, item) => itemSum + item.quantidade, 0) || 0);
-    }, 0);
-
-    const pa = atendimentos_hoje > 0 ? totalItens / atendimentos_hoje : 0;
-    const conversao = atendimentos_hoje > 0 ? (vendas_count / atendimentos_hoje) * 100 : 0;
-    const faturamento_total = vendas.reduce((sum, venda) => sum + venda.faturamento_total, 0);
-    const ticket_medio = vendas_count > 0 ? faturamento_total / vendas_count : 0;
-    const faturamento_mes = (vendasDoMes || []).reduce((sum, venda) => sum + venda.faturamento_total, 0);
+    const metricas = calcularMetricasVendas(vendas, vendasDoMes || [], atendimentos_hoje);
 
     return NextResponse.json({
       success: true,
       vendas,
-      metricas: {
-        vendas: vendas_count,
-        pa: parseFloat(pa.toFixed(2)),
-        conversao: parseFloat(conversao.toFixed(2)),
-        atendimentos_hoje,
-        faturamento_total,
-        ticket_medio: parseFloat(ticket_medio.toFixed(2)),
-        faturamento_mes: parseFloat(faturamento_mes.toFixed(2)),
-        total_itens: totalItens,
-      },
+      metricas,
     });
   } catch (error) {
     console.error('Erro ao buscar vendas:', error);

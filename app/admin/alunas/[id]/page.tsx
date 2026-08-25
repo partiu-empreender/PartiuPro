@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUserWithWorkspace, isCurrentUserAdmin } from '@/lib/supabase-server';
 import Navbar from '@/components/shared/Navbar';
-import AdminResumo from './AdminResumo';
+import AlunaDetalhe from './AlunaDetalhe';
 
-export default async function AdminPage() {
+export default async function AlunaDetalhePage({ params }: { params: { id: string } }) {
   const isAdmin = await isCurrentUserAdmin();
   if (!isAdmin) {
     redirect('/dashboard');
@@ -15,7 +15,7 @@ export default async function AdminPage() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar nome={nome} isAdmin={isAdmin} />
-      <AdminResumo />
+      <AlunaDetalhe workspaceId={params.id} />
     </div>
   );
 }
