@@ -20,6 +20,11 @@ Coisas que foram identificadas mas **deliberadamente adiadas**. Cada item tem o 
 - **Por que está pendente**: não é bloqueante pro uso atual (poucas contas), e configurar SMTP requer decidir/criar conta num provedor de e-mail — decisão de custo/ferramenta, não só código.
 - Projeto afetado: `vcaxpbynkamdbxwzrklo`.
 
+### Religar "Confirm email" no Supabase Auth antes de divulgar pras alunas
+- **O que é**: em 2026-08-25, desligamos temporariamente a exigência de confirmação de e-mail (Authentication → Providers → Email → "Confirm email") só pra conseguir testar o cadastro sem esbarrar no limite de envio de e-mail (item acima).
+- **Por que importa**: com isso desligado, qualquer pessoa pode criar conta com um e-mail que não é dela (não há verificação nenhuma). Antes de mandar o link pra Tania/alunas de verdade, religar essa opção — ou, melhor ainda, resolver o SMTP customizado primeiro (item acima) e religar junto.
+- Projeto afetado: `vcaxpbynkamdbxwzrklo`.
+
 ## Migração Lovable → Next.js
 
 Ver [`PLANO_MIGRACAO_LOVABLE.md`](./PLANO_MIGRACAO_LOVABLE.md) — plano completo, decidido em 2026-08-24 (Next.js vai substituir o Lovable). Os itens de código de lá (portar metas, atendimentos, catálogo de produtos, perfil) são trabalho de desenvolvimento ainda não iniciado — só o plano existe até aqui.
