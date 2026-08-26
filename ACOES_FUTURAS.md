@@ -37,10 +37,9 @@ Ver [`PLANO_MIGRACAO_LOVABLE.md`](./PLANO_MIGRACAO_LOVABLE.md) — plano complet
 - **Onde fazer**: editar as constantes `CNPJ_PONTE` e `EMAIL_PRIVACIDADE` em `lib/legal.ts`.
 - **Bloqueia**: divulgar o link do app pras alunas — os textos legais não podem ir ao ar com placeholder visível.
 
-### Aplicar a migration `004_lgpd_consent.sql`
-- **O que é**: cria `terms_acceptances`, `marketing_consents`, `admin_access_log`, e troca as FKs que apontam pra `users(id)` (inclusive `users.id → auth.users(id)`) pra `ON DELETE CASCADE`.
-- **Por que está pendente**: o Supabase MCP está desconectado nesta sessão — não consegui aplicar a migration eu mesmo. Rodar manualmente no SQL Editor do Supabase (projeto `vcaxpbynkamdbxwzrklo`) o conteúdo de `supabase/migrations/004_lgpd_consent.sql`.
-- **Bloqueia**: signup vai dar erro (tabela `terms_acceptances` não existe) até essa migration ser aplicada — ou seja, é bloqueante pra qualquer novo cadastro depois deste deploy.
+### Migration `004_lgpd_consent.sql` — já aplicada (2026-08-26)
+- Criou `terms_acceptances`, `marketing_consents` e `admin_access_log`, e trocou as FKs que apontam pra `users(id)` (inclusive `users.id → auth.users(id)`) pra `ON DELETE CASCADE`.
+- **Nota**: a tabela `admin_access_log` ficou sem uso — o recurso de log de acesso do admin (modal pedindo motivo antes de ver o detalhe de uma aluna) foi removido a pedido da Tania em 2026-08-26. A tabela em si é inofensiva (vazia, sem nada escrevendo nela); pode ser removida numa limpeza futura se quiserem.
 
 ### Prioridade 2 do documento de LGPD (ainda não implementada)
 - Conta de demonstração fictícia pra material de divulgação (evita depender de autorização de qualquer aluna).

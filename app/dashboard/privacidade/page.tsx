@@ -18,16 +18,9 @@ import {
 } from '@/components/ui/dialog';
 import { EMAIL_PRIVACIDADE } from '@/lib/legal';
 
-interface AcessoLog {
-  id: string;
-  reason: string;
-  accessed_at: string;
-}
-
 interface PrivacidadeData {
   termos_aceitos: { terms_version: string; accepted_at: string } | null;
   consentimento_divulgacao: { granted: boolean; version?: string; granted_at?: string; revoked_at?: string };
-  historico_acessos: AcessoLog[];
 }
 
 export default function PrivacidadePage() {
@@ -165,27 +158,6 @@ export default function PrivacidadePage() {
             >
               {divulgacaoAtiva ? 'Retirar autorização' : 'Conceder autorização'}
             </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Histórico de acessos da equipe</CardTitle>
-            <CardDescription>Toda vez que a equipe abre o detalhe dos seus dados, fica registrado aqui.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {!dados?.historico_acessos.length ? (
-              <p className="text-sm text-muted-foreground">Nenhum acesso registrado.</p>
-            ) : (
-              dados.historico_acessos.map((log) => (
-                <div key={log.id} className="flex items-center justify-between border-b pb-2 text-sm last:border-0">
-                  <span>{log.reason}</span>
-                  <span className="text-muted-foreground">
-                    {new Date(log.accessed_at).toLocaleString('pt-BR')}
-                  </span>
-                </div>
-              ))
-            )}
           </CardContent>
         </Card>
 

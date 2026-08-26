@@ -15,7 +15,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const [{ data: termos }, { data: consentimento }, { data: acessos }] = await Promise.all([
+    const [{ data: termos }, { data: consentimento }] = await Promise.all([
       supabase
         .from('terms_acceptances')
         .select('terms_version, accepted_at')
@@ -28,12 +28,6 @@ export async function GET() {
         .select('version, granted, granted_at, revoked_at')
         .eq('user_id', user.id)
         .maybeSingle(),
-      supabase
-        .from('admin_access_log')
-        .select('id, reason, accessed_at')
-        .eq('workspace_id', user.id)
-        .order('accessed_at', { ascending: false })
-        .limit(30),
     ]);
 
     return NextResponse.json({
@@ -41,7 +35,6 @@ export async function GET() {
       data: {
         termos_aceitos: termos ?? null,
         consentimento_divulgacao: consentimento ?? { granted: false },
-        historico_acessos: acessos ?? [],
       },
     });
   } catch (error) {
