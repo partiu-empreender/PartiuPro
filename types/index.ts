@@ -211,6 +211,34 @@ export interface AssistantSettings {
   updated_at: string;
 }
 
+// LGPD — consentimento e acesso
+export interface TermsAcceptance {
+  id: string;
+  user_id: string;
+  terms_version: string;
+  terms_text: string;
+  accepted_at: string;
+  ip?: string;
+}
+
+export interface MarketingConsent {
+  id: string;
+  user_id: string;
+  version: string;
+  granted: boolean;
+  granted_at?: string;
+  revoked_at?: string;
+  updated_at: string;
+}
+
+export interface AdminAccessLog {
+  id: string;
+  admin_id: string;
+  workspace_id: string;
+  reason: string;
+  accessed_at: string;
+}
+
 // Form Data
 export interface CheckoutFormData {
   customer: {

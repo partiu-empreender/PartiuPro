@@ -1,10 +1,11 @@
 import { getRouteHandlerSupabaseClient, supabaseAdmin } from '@/lib/supabase-server';
 import { generateSlug, validateEmail, validatePhoneNumber } from '@/lib/utils';
+import { TERMS_VERSION, TERMS_TEXT, MARKETING_CONSENT_VERSION } from '@/lib/legal';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { action, email, password, full_name, phone } = await request.json();
+    const { action, email, password, full_name, phone, terms_accepted, marketing_consent } = await request.json();
 
     const supabase = await getRouteHandlerSupabaseClient();
 
@@ -20,6 +21,13 @@ export async function POST(request: Request) {
       if (password.length < 6) {
         return NextResponse.json(
           { error: 'Senha deve ter pelo menos 6 caracteres' },
+          { status: 400 },
+        );
+      }
+
+      if (terms_accepted !== true) {
+        return NextResponse.json(
+          { error: 'É preciso estar ciente de como os dados são tratados para criar a conta' },
           { status: 400 },
         );
       }
@@ -83,6 +91,35 @@ export async function POST(request: Request) {
 
       if (assistantError) {
         console.error('Assistant settings error:', assistantError);
+      }
+
+      // Registro do aceite dos termos e, se marcado, do consentimento de
+      // divulgação — mesmo motivo dos inserts acima: sem sessão ainda.
+      const { error: termsError } = await supabaseAdmin.from('terms_acceptances').insert({
+        user_id: authData.user.id,
+        terms_version: TERMS_VERSION,
+        terms_text: TERMS_TEXT,
+      });
+
+      if (termsError) {
+        console.error('Terms acceptance error:', termsError);
+      }
+
+      if (marketing_consent === true) {
+        const { error: consentError } = await supabaseAdmin.from('marketing_consents').upsert(
+          {
+            user_id: authData.user.id,
+            version: MARKETING_CONSENT_VERSION,
+            granted: true,
+            granted_at: new Date().toISOString(),
+            revoked_at: null,
+          },
+          { onConflict: 'user_id' },
+        );
+
+        if (consentError) {
+          console.error('Marketing consent error:', consentError);
+        }
       }
 
       return NextResponse.json(

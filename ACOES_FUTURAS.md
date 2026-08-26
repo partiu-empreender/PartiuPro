@@ -28,3 +28,23 @@ Coisas que foram identificadas mas **deliberadamente adiadas**. Cada item tem o 
 ## Migração Lovable → Next.js
 
 Ver [`PLANO_MIGRACAO_LOVABLE.md`](./PLANO_MIGRACAO_LOVABLE.md) — plano completo, decidido em 2026-08-24 (Next.js vai substituir o Lovable). Os itens de código de lá (portar metas, atendimentos, catálogo de produtos, perfil) são trabalho de desenvolvimento ainda não iniciado — só o plano existe até aqui.
+
+## LGPD — consentimento e privacidade
+
+### Preencher CNPJ e e-mail de contato de privacidade nos textos legais
+- **O que é**: `lib/legal.ts` tem os textos do aviso de signup e da Política de Privacidade completa (`app/politica-privacidade`), mas dois campos ficaram como placeholder: `CNPJ_PONTE` e `EMAIL_PRIVACIDADE`.
+- **Por que está pendente**: decisão explícita da Tania em 2026-08-26 — implementar agora com placeholder, preencher os dados reais antes de divulgar.
+- **Onde fazer**: editar as constantes `CNPJ_PONTE` e `EMAIL_PRIVACIDADE` em `lib/legal.ts`.
+- **Bloqueia**: divulgar o link do app pras alunas — os textos legais não podem ir ao ar com placeholder visível.
+
+### Aplicar a migration `004_lgpd_consent.sql`
+- **O que é**: cria `terms_acceptances`, `marketing_consents`, `admin_access_log`, e troca as FKs que apontam pra `users(id)` (inclusive `users.id → auth.users(id)`) pra `ON DELETE CASCADE`.
+- **Por que está pendente**: o Supabase MCP está desconectado nesta sessão — não consegui aplicar a migration eu mesmo. Rodar manualmente no SQL Editor do Supabase (projeto `vcaxpbynkamdbxwzrklo`) o conteúdo de `supabase/migrations/004_lgpd_consent.sql`.
+- **Bloqueia**: signup vai dar erro (tabela `terms_acceptances` não existe) até essa migration ser aplicada — ou seja, é bloqueante pra qualquer novo cadastro depois deste deploy.
+
+### Prioridade 2 do documento de LGPD (ainda não implementada)
+- Conta de demonstração fictícia pra material de divulgação (evita depender de autorização de qualquer aluna).
+- Modo de captura com máscara de nomes de clientes.
+- Regra de k-mínimo (n≥5) antes de exibir agregados como anonimizados.
+- Job automático de retenção/expurgo (30 dias cliente final / 90 dias conta / 6 meses logs).
+- Ver o documento completo "Fluxo de Aviso LGPD — Partiu PRO v5" (compartilhado pela Tania em 2026-08-26) pra detalhes de cada item.

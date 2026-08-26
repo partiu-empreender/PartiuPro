@@ -6,7 +6,9 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { validateEmail } from '@/lib/utils';
+import { TERMS_TEXT, TERMS_CHECKBOX_LABEL, MARKETING_CONSENT_LABEL } from '@/lib/legal';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -14,6 +16,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [termosAceitos, setTermosAceitos] = useState(false);
+  const [autorizaDivulgacao, setAutorizaDivulgacao] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -46,11 +50,24 @@ export default function SignupPage() {
       return;
     }
 
+    if (!termosAceitos) {
+      setError('É preciso estar ciente de como seus dados são tratados para criar a conta');
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'signup', email, password, full_name: fullName }),
+        body: JSON.stringify({
+          action: 'signup',
+          email,
+          password,
+          full_name: fullName,
+          terms_accepted: termosAceitos,
+          marketing_consent: autorizaDivulgacao,
+        }),
       });
       const result = await res.json();
 
@@ -128,6 +145,41 @@ export default function SignupPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
               />
+            </div>
+
+            <div className="max-h-32 overflow-y-auto rounded-lg border p-3 text-xs text-muted-foreground whitespace-pre-wrap">
+              {TERMS_TEXT}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Texto completo na{' '}
+              <Link href="/politica-privacidade" target="_blank" className="text-primary hover:underline">
+                Política de Privacidade
+              </Link>
+              .
+            </p>
+
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="termos"
+                checked={termosAceitos}
+                onCheckedChange={(checked) => setTermosAceitos(checked === true)}
+                className="mt-0.5"
+              />
+              <label htmlFor="termos" className="text-sm leading-snug">
+                {TERMS_CHECKBOX_LABEL}
+              </label>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="divulgacao"
+                checked={autorizaDivulgacao}
+                onCheckedChange={(checked) => setAutorizaDivulgacao(checked === true)}
+                className="mt-0.5"
+              />
+              <label htmlFor="divulgacao" className="text-sm leading-snug text-muted-foreground">
+                {MARKETING_CONSENT_LABEL}
+              </label>
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>

@@ -1,5 +1,5 @@
 -- ============================================
--- SCHEMA CORRIGIDO - RAIO-X E-COMMERCE
+-- SCHEMA CORRIGIDO - PARTIU PRO
 -- ============================================
 -- Mudanças principais:
 -- 1. Adicionadas tabelas vendas_diarias e venda_itens

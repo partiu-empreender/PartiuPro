@@ -300,7 +300,7 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Cliente</label>
                 <Input
-                  placeholder="Nome do cliente"
+                  placeholder="Apelido ou primeiro nome — evite dados completos"
                   value={clienteNome}
                   onChange={(e) => setClienteNome(e.target.value)}
                 />

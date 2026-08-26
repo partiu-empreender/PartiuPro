@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { isCurrentUserAdmin, supabaseAdmin } from '@/lib/supabase-server';
+import { getCurrentUser, isCurrentUserAdmin, supabaseAdmin } from '@/lib/supabase-server';
 import { calcularMetricasVendas } from '@/lib/metrics';
+import { MOTIVOS_ACESSO_ADMIN, type MotivoAcessoAdmin } from '@/lib/legal';
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: { id: string } }) {
   const isAdmin = await isCurrentUserAdmin();
   if (!isAdmin) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 });
@@ -10,6 +11,29 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
   try {
     const workspaceId = params.id;
+    const { searchParams } = new URL(request.url);
+    const primeiraChamada = searchParams.get('primeira') === '1';
+    const motivo = searchParams.get('motivo') as MotivoAcessoAdmin | null;
+
+    if (primeiraChamada) {
+      const motivoValido = MOTIVOS_ACESSO_ADMIN.find((m) => m.value === motivo);
+      if (!motivoValido) {
+        return NextResponse.json({ error: 'Informe o motivo do acesso' }, { status: 400 });
+      }
+
+      const admin = await getCurrentUser();
+      if (admin) {
+        const { error: logError } = await supabaseAdmin.from('admin_access_log').insert({
+          admin_id: admin.id,
+          workspace_id: workspaceId,
+          reason: motivoValido.label,
+        });
+        if (logError) {
+          console.error('Erro ao registrar log de acesso admin:', logError);
+        }
+      }
+    }
+
     const agora = new Date();
     const hoje = agora.toISOString().split('T')[0];
     const primeiroDiaDoMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().split('T')[0];

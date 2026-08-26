@@ -1,9 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { ArrowLeft, ShoppingBag, Package, DollarSign, CalendarDays, TrendingUp } from 'lucide-react';
+import { MOTIVOS_ACESSO_ADMIN, type MotivoAcessoAdmin } from '@/lib/legal';
 
 interface Metricas {
   vendas: number;
@@ -60,10 +70,20 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
   const [dados, setDados] = useState<DetalheData | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
+  const [motivo, setMotivo] = useState<MotivoAcessoAdmin | ''>('');
+  const [motivoConfirmado, setMotivoConfirmado] = useState(false);
+  const logEnviado = useRef(false);
 
   const carregar = async () => {
     try {
-      const res = await fetch(`/api/admin/alunas/${workspaceId}`);
+      const primeiraChamada = !logEnviado.current;
+      const params = new URLSearchParams();
+      if (primeiraChamada) {
+        params.set('motivo', motivo);
+        params.set('primeira', '1');
+        logEnviado.current = true;
+      }
+      const res = await fetch(`/api/admin/alunas/${workspaceId}?${params.toString()}`);
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Erro ao carregar dados da aluna');
       setDados(result.data);
@@ -75,11 +95,46 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
   };
 
   useEffect(() => {
+    if (!motivoConfirmado) return;
     carregar();
     const interval = setInterval(carregar, POLL_MS);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
+  }, [workspaceId, motivoConfirmado]);
+
+  if (!motivoConfirmado) {
+    return (
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Por que você está acessando esses dados?</DialogTitle>
+            <DialogDescription>
+              Esse acesso fica registrado e visível pra própria aluna, na aba Privacidade dela.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {MOTIVOS_ACESSO_ADMIN.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => setMotivo(m.value)}
+                className={`w-full rounded-md border p-3 text-left text-sm transition-colors ${
+                  motivo === m.value ? 'border-primary bg-primary/10' : 'hover:bg-muted/50'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button disabled={!motivo} onClick={() => setMotivoConfirmado(true)}>
+              Confirmar e ver dados
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   if (loading) {
     return <p className="container mx-auto p-6 text-center text-muted-foreground">Carregando...</p>;

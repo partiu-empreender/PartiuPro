@@ -1,4 +1,4 @@
-# Raio-X
+# Partiu PRO
 
 Painel de vendas para quem revende presentes/produtos: registra vendas do dia, calcula métricas (PA, ticket médio, faturamento) e ajuda a precificar produtos.
 
