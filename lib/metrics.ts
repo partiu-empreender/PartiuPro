@@ -4,8 +4,18 @@
 // "atendimentos" (pessoas abordadas, mesmo sem compra) como denominador,
 // não o número de vendas.
 
+export type TipoItem = 'produto' | 'adicional';
+
+// Só `quantidade` é obrigatória: o painel admin consulta menos colunas que o
+// dashboard da aluna, e o ranking simplesmente não aparece quando os dados
+// extras não vêm.
 interface VendaItemMetrica {
   quantidade: number;
+  produto_id?: string | null;
+  produto_nome?: string;
+  subtotal?: number;
+  preco_unitario?: number;
+  tipo?: TipoItem;
 }
 
 interface VendaMetrica {
@@ -78,6 +88,108 @@ export interface ProjecaoMeta {
   faltam: number;
 }
 
+export interface ItemRanking {
+  posicao: number;
+  nome: string;
+  quantidade: number;
+  faturamento: number;
+  /** % do faturamento de itens do mês (produtos + adicionais, sem frete). */
+  percentualFaturamento: number;
+  /** % dentro da própria categoria — é sobre isto que a curva ABC é calculada. */
+  percentualNaCategoria: number;
+  /** % acumulado na categoria, descendo o ranking. Define a classe ABC. */
+  percentualAcumulado: number;
+  classe: 'A' | 'B' | 'C';
+}
+
+export interface ResumoCategoria {
+  tipo: TipoItem;
+  itens: ItemRanking[];
+  quantidade: number;
+  faturamento: number;
+  /** Peso da categoria no faturamento de itens do mês. */
+  percentualFaturamento: number;
+}
+
+// Curva ABC clássica, aplicada ao faturamento do mês:
+//   A = itens que somam os primeiros 80% do faturamento (o que sustenta o negócio)
+//   B = os seguintes, até 95%
+//   C = a cauda
+//
+// O parâmetro é o acumulado ANTES deste item, de propósito: assim o item que
+// atravessa a linha dos 80% ainda entra em A. Usando o acumulado depois, um
+// único produto que sozinho fizesse 90% do faturamento cairia em B, e o grupo
+// A ficaria vazio.
+function classificarABC(percentualAcumuladoAntes: number): 'A' | 'B' | 'C' {
+  if (percentualAcumuladoAntes < 80) return 'A';
+  if (percentualAcumuladoAntes < 95) return 'B';
+  return 'C';
+}
+
+function faturamentoDoItem(item: VendaItemMetrica): number {
+  if (typeof item.subtotal === 'number') return item.subtotal;
+  if (typeof item.preco_unitario === 'number') return item.preco_unitario * item.quantidade;
+  return 0;
+}
+
+/**
+ * Agrupa os itens vendidos por produto e ordena por faturamento.
+ *
+ * A chave de agrupamento é o produto_id quando existe, com o nome como
+ * reserva pros itens avulsos (digitados na hora, fora do catálogo). Assim,
+ * renomear um produto cadastrado não parte o histórico dele em dois.
+ */
+function montarRanking(
+  itens: VendaItemMetrica[],
+  faturamentoTotalItens: number,
+  faturamentoDaCategoria: number,
+): ItemRanking[] {
+  const grupos = new Map<string, { nome: string; quantidade: number; faturamento: number }>();
+
+  for (const item of itens) {
+    const nome = (item.produto_nome || '').trim() || 'Sem nome';
+    const chave = item.produto_id || `nome:${nome.toLowerCase()}`;
+    const atual = grupos.get(chave);
+    if (atual) {
+      atual.quantidade += item.quantidade;
+      atual.faturamento += faturamentoDoItem(item);
+      atual.nome = nome; // o nome mais recente vence, se o produto foi renomeado
+    } else {
+      grupos.set(chave, { nome, quantidade: item.quantidade, faturamento: faturamentoDoItem(item) });
+    }
+  }
+
+  const ordenados = [...grupos.values()].sort(
+    (a, b) => b.faturamento - a.faturamento || b.quantidade - a.quantidade,
+  );
+
+  let acumuladoNaCategoria = 0;
+  return ordenados.map((grupo, i) => {
+    // Dois denominadores, de propósito. O percentual exibido é sobre o mês
+    // inteiro, que é a leitura que a aluna quer ("quanto isso representa do
+    // que eu faturei"). Já a curva ABC roda sobre a própria categoria: como o
+    // ranking é apresentado separado, classificar adicionais contra o total
+    // rotularia todos como C só por serem uma fatia pequena do negócio.
+    const percentualGlobal =
+      faturamentoTotalItens > 0 ? (grupo.faturamento / faturamentoTotalItens) * 100 : 0;
+    const percentualCategoria =
+      faturamentoDaCategoria > 0 ? (grupo.faturamento / faturamentoDaCategoria) * 100 : 0;
+    const acumuladoAntes = acumuladoNaCategoria;
+    acumuladoNaCategoria += percentualCategoria;
+
+    return {
+      posicao: i + 1,
+      nome: grupo.nome,
+      quantidade: grupo.quantidade,
+      faturamento: parseFloat(grupo.faturamento.toFixed(2)),
+      percentualFaturamento: parseFloat(percentualGlobal.toFixed(1)),
+      percentualNaCategoria: parseFloat(percentualCategoria.toFixed(1)),
+      percentualAcumulado: parseFloat(Math.min(100, acumuladoNaCategoria).toFixed(1)),
+      classe: classificarABC(acumuladoAntes),
+    };
+  });
+}
+
 export interface RelatorioMensal {
   faturamento_mes: number;
   /** Nº de transações no mês — uma por cliente/venda, independente da quantidade. */
@@ -95,6 +207,15 @@ export interface RelatorioMensal {
   insights: string[];
   projecao_ticket_atual: ProjecaoMeta | null;
   projecao_ticket_referencia: (ProjecaoMeta & { valorReferencia: number }) | null;
+  /**
+   * Faturamento somando só os itens vendidos. Difere de `faturamento_mes`
+   * porque este último inclui o frete, que não pertence a nenhum produto.
+   * É a base dos percentuais do ranking — usar o outro faria os percentuais
+   * não fecharem em 100%.
+   */
+  faturamento_itens: number;
+  ranking_produtos: ResumoCategoria;
+  ranking_adicionais: ResumoCategoria;
 }
 
 function calcularFaixasValor(valores: number[], faturamentoTotal: number): FaixaValor[] {
@@ -174,6 +295,28 @@ export function calcularRelatorioMensal(
   const falta_para_meta = Math.max(0, metaMensal - faturamento_mes);
   const percentual_meta = metaMensal > 0 ? (faturamento_mes / metaMensal) * 100 : 0;
 
+  // ---- Ranking / curva ABC, por categoria ----
+  const todosItens = vendasMes.flatMap((v) => v.venda_itens || []);
+  const faturamento_itens = todosItens.reduce((sum, item) => sum + faturamentoDoItem(item), 0);
+
+  const montarCategoria = (tipo: TipoItem): ResumoCategoria => {
+    // Item sem tipo é anterior à migration 006, quando tudo era produto.
+    const itensDaCategoria = todosItens.filter((item) => (item.tipo ?? 'produto') === tipo);
+    const faturamentoCategoria = itensDaCategoria.reduce((s, i) => s + faturamentoDoItem(i), 0);
+    return {
+      tipo,
+      itens: montarRanking(itensDaCategoria, faturamento_itens, faturamentoCategoria),
+      quantidade: itensDaCategoria.reduce((s, i) => s + i.quantidade, 0),
+      faturamento: parseFloat(faturamentoCategoria.toFixed(2)),
+      percentualFaturamento: parseFloat(
+        (faturamento_itens > 0 ? (faturamentoCategoria / faturamento_itens) * 100 : 0).toFixed(1),
+      ),
+    };
+  };
+
+  const ranking_produtos = montarCategoria('produto');
+  const ranking_adicionais = montarCategoria('adicional');
+
   const valores = vendasMes.map((v) => v.faturamento_total);
   const faixas = calcularFaixasValor(valores, faturamento_mes);
   const faixaAlta = faixas.find((f) => f.tipo === 'alta') ?? faixas.find((f) => f.tipo === 'unica');
@@ -201,6 +344,35 @@ export function calcularRelatorioMensal(
     } else {
       insights.push(
         'Registre seus atendimentos do mês pra descobrir sua taxa de conversão (quantas pessoas abordadas viram venda).',
+      );
+    }
+
+    const campeao = ranking_produtos.itens[0];
+    if (campeao) {
+      insights.push(
+        `Seu produto mais forte foi ${campeao.nome}: ${campeao.quantidade} vendido(s), ${brl(campeao.faturamento)} — ${campeao.percentualFaturamento.toFixed(0)}% do faturamento.`,
+      );
+    }
+
+    const classeA = ranking_produtos.itens.filter((i) => i.classe === 'A').length;
+    if (classeA > 0 && ranking_produtos.itens.length > classeA) {
+      insights.push(
+        `${classeA} de ${ranking_produtos.itens.length} produtos respondem pela maior parte do que você fatura. São eles que merecem seu estoque e sua divulgação.`,
+      );
+    }
+
+    // O ponto que a Tania levanta: adicional é margem que costuma ficar na mesa.
+    if (ranking_adicionais.itens.length === 0) {
+      insights.push(
+        'Você não registrou nenhum adicional este mês. Buquê, arranjo ou cartão vendidos junto da cesta aumentam o ticket sem exigir um cliente novo.',
+      );
+    } else if (ranking_adicionais.percentualFaturamento < 10) {
+      insights.push(
+        `Os adicionais foram só ${ranking_adicionais.percentualFaturamento.toFixed(0)}% do seu faturamento (${brl(ranking_adicionais.faturamento)}). Oferecer um adicional em cada venda é o jeito mais barato de subir o ticket médio.`,
+      );
+    } else {
+      insights.push(
+        `Os adicionais trouxeram ${brl(ranking_adicionais.faturamento)}, ${ranking_adicionais.percentualFaturamento.toFixed(0)}% do faturamento. Está funcionando — vale insistir nisso.`,
       );
     }
   }
@@ -233,5 +405,8 @@ export function calcularRelatorioMensal(
     insights,
     projecao_ticket_atual,
     projecao_ticket_referencia,
+    faturamento_itens: parseFloat(faturamento_itens.toFixed(2)),
+    ranking_produtos,
+    ranking_adicionais,
   };
 }

@@ -33,6 +33,13 @@ const CORES_FAIXA: Record<RelatorioMensal['faixas'][number]['tipo'], string> = {
   unica: '#7c3aed',
 };
 
+// Curva ABC: A é o que sustenta o faturamento, C é a cauda.
+const CORES_CLASSE: Record<'A' | 'B' | 'C', string> = {
+  A: 'bg-emerald-100 text-emerald-800',
+  B: 'bg-amber-100 text-amber-800',
+  C: 'bg-muted text-muted-foreground',
+};
+
 const rotuloFaixa = (faixa: RelatorioMensal['faixas'][number]) => {
   if (faixa.tipo === 'unica') return 'Todas as vendas';
   if (faixa.tipo === 'baixa') return `Até ${brl(faixa.max)}`;
@@ -343,6 +350,79 @@ export default function DashboardPage() {
                         distância até ela.
                       </p>
                     )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>O que mais vendeu</CardTitle>
+                    <CardDescription>
+                      Ranking por faturamento no mês. A classe mostra o peso de cada item dentro da sua
+                      categoria: <strong>A</strong> é o que sustenta o faturamento, <strong>C</strong> é a
+                      cauda.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-8">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {[relatorio.ranking_produtos, relatorio.ranking_adicionais].map((cat) => (
+                        <div key={cat.tipo} className="rounded-lg border p-4">
+                          <p className="text-sm text-muted-foreground">
+                            {cat.tipo === 'produto' ? 'Produtos' : 'Adicionais'}
+                          </p>
+                          <p className="text-2xl font-bold">{brl(cat.faturamento)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {cat.percentualFaturamento.toFixed(0)}% do faturamento ·{' '}
+                            {cat.quantidade} item(ns)
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {[relatorio.ranking_produtos, relatorio.ranking_adicionais].map((cat) => (
+                      <div key={cat.tipo} className="space-y-3">
+                        <h3 className="font-semibold">
+                          {cat.tipo === 'produto' ? 'Produtos' : 'Adicionais'}
+                        </h3>
+                        {cat.itens.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            {cat.tipo === 'produto'
+                              ? 'Nenhum produto registrado no mês.'
+                              : 'Nenhum adicional vendido este mês — é ticket médio deixado na mesa.'}
+                          </p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-[520px] text-sm">
+                              <thead>
+                                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                  <th className="px-2 py-2">#</th>
+                                  <th className="px-2 py-2">Item</th>
+                                  <th className="px-2 py-2">Qtd</th>
+                                  <th className="px-2 py-2">Faturamento</th>
+                                  <th className="px-2 py-2">% do mês</th>
+                                  <th className="px-2 py-2">Classe</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cat.itens.map((item) => (
+                                  <tr key={`${cat.tipo}-${item.posicao}`} className="border-b last:border-0">
+                                    <td className="px-2 py-2 text-muted-foreground">{item.posicao}</td>
+                                    <td className="px-2 py-2 font-medium">{item.nome}</td>
+                                    <td className="px-2 py-2">{item.quantidade}</td>
+                                    <td className="px-2 py-2">{brl(item.faturamento)}</td>
+                                    <td className="px-2 py-2">{item.percentualFaturamento.toFixed(1)}%</td>
+                                    <td className="px-2 py-2">
+                                      <span className={`rounded px-2 py-0.5 text-xs font-bold ${CORES_CLASSE[item.classe]}`}>
+                                        {item.classe}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </CardContent>
                 </Card>
 

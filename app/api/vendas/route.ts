@@ -259,6 +259,7 @@ export async function GET(request: NextRequest) {
           status,
           venda_itens (
             id,
+            produto_id,
             produto_nome,
             quantidade,
             preco_unitario,
