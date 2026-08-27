@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import PageShell from '@/components/shared/PageShell';
+import PageHeader from '@/components/shared/PageHeader';
 
 interface AlunaResumo {
   id: string;
@@ -47,15 +49,13 @@ export default function AdminResumo() {
   const alunasAtivas = alunas.filter((a) => a.vendas_30d > 0).length;
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">Painel Administrativo</h1>
-        <p className="mt-2 text-muted-foreground">
-          Visão consolidada de todas as alunas — últimos 30 dias (atualiza automaticamente)
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Painel Administrativo"
+        description="Visão consolidada de todas as alunas — últimos 30 dias (atualiza automaticamente)"
+      />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3 mb-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Alunas cadastradas</CardTitle>
@@ -128,6 +128,6 @@ export default function AdminResumo() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

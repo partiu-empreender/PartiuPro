@@ -14,7 +14,12 @@ export default async function AdminPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar nome={nome} email={result?.user?.email} isAdmin={isAdmin} />
+      <Navbar
+        nome={nome}
+        email={result?.user?.email}
+        avatarUrl={result?.userData?.avatar_url}
+        isAdmin={isAdmin}
+      />
       <AdminResumo />
     </div>
   );

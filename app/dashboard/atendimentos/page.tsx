@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import PageShell from '@/components/shared/PageShell';
+import PageHeader from '@/components/shared/PageHeader';
 
 interface Atendimento {
   id: string;
@@ -78,14 +80,11 @@ export default function AtendimentosPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-2xl p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">Quantas pessoas você atendeu hoje?</h1>
-        <p className="mt-2 text-muted-foreground">
-          Conte todo mundo com quem você falou — mesmo quem não comprou. Isso é a base da sua taxa
-          de conversão.
-        </p>
-      </div>
+    <PageShell width="narrow">
+      <PageHeader
+        title="Quantas pessoas você atendeu hoje?"
+        description="Conte todo mundo com quem você falou — mesmo quem não comprou. Isso é a base da sua taxa de conversão."
+      />
 
       <form onSubmit={salvar} className="space-y-6 rounded-lg border bg-card p-6 shadow-sm sm:p-10">
         {erro && (
@@ -161,6 +160,6 @@ export default function AtendimentosPage() {
           </div>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

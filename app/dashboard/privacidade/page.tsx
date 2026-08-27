@@ -15,6 +15,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { EMAIL_PRIVACIDADE } from '@/lib/legal';
+import PageShell from '@/components/shared/PageShell';
+import PageHeader from '@/components/shared/PageHeader';
 
 interface PrivacidadeData {
   termos_aceitos: { terms_version: string; accepted_at: string } | null;
@@ -64,7 +66,11 @@ export default function PrivacidadePage() {
   };
 
   if (loading) {
-    return <p className="p-6 text-center text-muted-foreground">Carregando...</p>;
+    return (
+      <PageShell width="narrow">
+        <p className="py-8 text-center text-muted-foreground">Carregando...</p>
+      </PageShell>
+    );
   }
 
   const divulgacao = dados?.consentimento_divulgacao;
@@ -78,14 +84,11 @@ export default function PrivacidadePage() {
   );
 
   return (
-    <div className="container mx-auto max-w-xl p-6 text-sm">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground">Privacidade</h1>
-        <p className="text-muted-foreground">Como seus dados são tratados no Partiu PRO.</p>
-      </div>
+    <PageShell width="narrow" className="text-sm">
+      <PageHeader title="Privacidade" description="Como seus dados são tratados no Partiu PRO." />
 
       {erro && (
-        <div className="mb-4 rounded-lg border border-destructive bg-destructive/10 p-3 text-destructive">
+        <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-destructive">
           {erro}
         </div>
       )}
@@ -175,6 +178,6 @@ export default function PrivacidadePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

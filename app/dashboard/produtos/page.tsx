@@ -13,6 +13,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
+import PageShell from '@/components/shared/PageShell';
+import PageHeader from '@/components/shared/PageHeader';
 
 interface Produto {
   id: string;
@@ -111,16 +113,16 @@ export default function ProdutosPage() {
   };
 
   return (
-    <div className="container mx-auto space-y-6 p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Meus produtos</h1>
-          <p className="mt-2 text-muted-foreground">Preço, custo, margem e lucro unitário.</p>
-        </div>
-        <Button onClick={abrirNovo} className="flex items-center gap-2 sm:shrink-0">
-          <Plus className="h-4 w-4" /> Novo produto
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Meus produtos"
+        description="Preço, custo, margem e lucro unitário."
+        action={
+          <Button onClick={abrirNovo} className="flex items-center gap-2">
+            <Plus className="h-4 w-4" /> Novo produto
+          </Button>
+        }
+      />
 
       {loading ? (
         <p className="text-center py-8 text-muted-foreground">Carregando...</p>
@@ -237,6 +239,6 @@ export default function ProdutosPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

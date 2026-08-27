@@ -1,0 +1,25 @@
+import { cn } from '@/lib/utils';
+
+// Fonte única de largura e respiro de página. Toda tela do app passa por
+// aqui — se o espaçamento precisar mudar, muda só neste arquivo.
+// A Navbar usa as mesmas classes horizontais (LARGURAS + padding) pra que os
+// links do menu fiquem alinhados com o conteúdo abaixo deles.
+
+export const LARGURAS = {
+  wide: 'max-w-6xl',
+  narrow: 'max-w-2xl',
+} as const;
+
+export const SHELL_X = 'mx-auto w-full px-4 sm:px-6 lg:px-8';
+
+interface PageShellProps {
+  children: React.ReactNode;
+  width?: keyof typeof LARGURAS;
+  className?: string;
+}
+
+export default function PageShell({ children, width = 'wide', className }: PageShellProps) {
+  return (
+    <main className={cn(SHELL_X, LARGURAS[width], 'space-y-6 py-8', className)}>{children}</main>
+  );
+}

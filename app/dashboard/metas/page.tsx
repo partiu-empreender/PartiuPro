@@ -23,6 +23,8 @@ import {
 } from '@/components/ui/dialog';
 import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import PageShell from '@/components/shared/PageShell';
+import PageHeader from '@/components/shared/PageHeader';
 
 const META_PADRAO = 10000;
 
@@ -137,16 +139,16 @@ export default function MetasPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-4xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Metas</h1>
-          <p className="mt-2 text-muted-foreground">Planejamento anual de {ano}</p>
-        </div>
-        <Button size="lg" onClick={abrir}>
-          <Pencil className="mr-2 h-4 w-4" /> Editar meta
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Metas"
+        description={`Planejamento anual de ${ano}`}
+        action={
+          <Button size="lg" onClick={abrir}>
+            <Pencil className="mr-2 h-4 w-4" /> Editar meta
+          </Button>
+        }
+      />
 
       <div className="flex items-center gap-2">
         <Button variant="outline" size="icon" aria-label="Ano anterior" onClick={() => setAno((a) => a - 1)}>
@@ -309,6 +311,6 @@ export default function MetasPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

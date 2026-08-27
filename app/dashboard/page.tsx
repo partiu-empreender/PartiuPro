@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PricingCalculator from '@/components/PricingCalculator';
 import { calcularRelatorioMensal, type RelatorioMensal } from '@/lib/metrics';
+import PageShell from '@/components/shared/PageShell';
+import PageHeader from '@/components/shared/PageHeader';
 import {
   ShoppingBag,
   Package,
@@ -224,19 +226,17 @@ export default function DashboardPage() {
 
   return (
     <>
-      <div className="container mx-auto p-6">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Dashboard de Vendas</h1>
-            <p className="mt-2 text-muted-foreground">
-              Visão geral do seu negócio em tempo real
-            </p>
-          </div>
-          <Button onClick={abrirModal} className="flex items-center gap-2 sm:shrink-0">
-            <Plus className="h-4 w-4" />
-            Registrar Venda
-          </Button>
-        </div>
+      <PageShell>
+        <PageHeader
+          title="Dashboard de Vendas"
+          description="Visão geral do seu negócio em tempo real"
+          action={
+            <Button onClick={abrirModal} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Registrar Venda
+            </Button>
+          }
+        />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
@@ -520,7 +520,7 @@ export default function DashboardPage() {
             <PricingCalculator />
           </TabsContent>
         </Tabs>
-      </div>
+      </PageShell>
 
       {showRegistroVendaModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">

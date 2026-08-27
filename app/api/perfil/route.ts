@@ -20,7 +20,7 @@ export async function GET() {
 
     const { data: perfil, error } = await supabase
       .from('users')
-      .select('id, full_name, email, is_admin')
+      .select('id, full_name, email, is_admin, avatar_url')
       .eq('id', user.id)
       .single();
 
@@ -64,7 +64,7 @@ export async function PATCH(request: NextRequest) {
       .from('users')
       .update({ full_name: body.full_name.trim() })
       .eq('id', user.id)
-      .select('id, full_name, email, is_admin')
+      .select('id, full_name, email, is_admin, avatar_url')
       .single();
 
     if (error || !perfil) {

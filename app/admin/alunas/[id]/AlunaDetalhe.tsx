@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, ShoppingBag, Package, DollarSign, CalendarDays, TrendingUp } from 'lucide-react';
+import PageShell from '@/components/shared/PageShell';
 
 interface Metricas {
   vendas: number;
@@ -82,14 +83,18 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
   }, [workspaceId]);
 
   if (loading) {
-    return <p className="container mx-auto p-6 text-center text-muted-foreground">Carregando...</p>;
+    return (
+      <PageShell>
+        <p className="py-8 text-center text-muted-foreground">Carregando...</p>
+      </PageShell>
+    );
   }
 
   if (erro || !dados) {
     return (
-      <div className="container mx-auto p-6">
-        <p className="text-center text-destructive">{erro || 'Aluna não encontrada'}</p>
-      </div>
+      <PageShell>
+        <p className="py-8 text-center text-destructive">{erro || 'Aluna não encontrada'}</p>
+      </PageShell>
     );
   }
 
@@ -106,17 +111,16 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
   ];
 
   return (
-    <div className="container mx-auto p-6">
-      <Link href="/admin" className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Voltar ao painel
-      </Link>
-
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">{perfil.full_name}</h1>
+    <PageShell>
+      <div>
+        <Link href="/admin" className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" /> Voltar ao painel
+        </Link>
+        <h1 className="text-2xl font-bold text-foreground sm:text-3xl">{perfil.full_name}</h1>
         <p className="mt-1 text-muted-foreground">{perfil.email} — atualiza automaticamente</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
         {cards.map((c) => {
           const Icon = c.icon;
           return (
@@ -133,7 +137,7 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
         })}
       </div>
 
-      <Card className="mb-8">
+      <Card>
         <CardHeader>
           <CardTitle>Meta do mês</CardTitle>
         </CardHeader>
@@ -192,7 +196,7 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
         </Card>
       </div>
 
-      <Card className="mt-6">
+      <Card>
         <CardHeader>
           <CardTitle>Vendas recentes (mês atual)</CardTitle>
         </CardHeader>
@@ -214,6 +218,6 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
