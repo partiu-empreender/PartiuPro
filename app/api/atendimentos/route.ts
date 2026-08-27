@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
+import { hojeBrasil } from '@/lib/datas';
 
 interface RegistrarAtendimentoRequest {
   data?: string; // yyyy-mm-dd, default hoje
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Informe quantas pessoas foram atendidas' }, { status: 400 });
     }
 
-    const data = body.data || new Date().toISOString().split('T')[0];
+    const data = body.data || hojeBrasil();
 
     const { data: atendimento, error } = await supabase
       .from('atendimentos_diarios')

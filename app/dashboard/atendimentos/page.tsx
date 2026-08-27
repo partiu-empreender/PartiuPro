@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
+import { hojeBrasil } from '@/lib/datas';
 
 interface Atendimento {
   id: string;
@@ -13,7 +14,7 @@ interface Atendimento {
   pessoas_atendidas: number;
 }
 
-const hoje = () => new Date().toISOString().slice(0, 10);
+const hoje = () => hojeBrasil();
 
 function fmtData(iso: string) {
   return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', {

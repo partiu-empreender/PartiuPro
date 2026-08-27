@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isCurrentUserAdmin, supabaseAdmin } from '@/lib/supabase-server';
+import { diasAtrasBrasil } from '@/lib/datas';
 
 interface AlunaResumo {
   id: string;
@@ -11,7 +12,7 @@ interface AlunaResumo {
 }
 
 async function carregarResumoAlunas(): Promise<AlunaResumo[]> {
-  const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const trintaDiasAtras = diasAtrasBrasil(30);
 
   const [{ data: usuarios }, { data: vendas }] = await Promise.all([
     supabaseAdmin.from('users').select('id, full_name, email, is_admin'),

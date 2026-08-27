@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { calcularMetricasVendas } from '@/lib/metrics';
+import { hojeBrasil, primeiroDiaDoMesBrasil } from '@/lib/datas';
 
 interface VendaItem {
   produto_id?: string; // preenchido quando o item veio do catálogo de produtos
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
       .insert({
         workspace_id: user.id,
         customer_id: body.customer_id || null,
-        data: new Date().toISOString().split('T')[0], // Data de hoje
+        data: hojeBrasil(), // Data de hoje no fuso do Brasil, não em UTC
         cliente_nome: body.cliente_nome,
         bairro: body.bairro || null,
         faturamento_total: total_com_frete,
@@ -212,9 +213,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Busca as vendas do mês (a lista exibida no dashboard filtra só as de hoje a partir daqui)
-    const agora = new Date();
-    const hoje = agora.toISOString().split('T')[0];
-    const primeiroDiaDoMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().split('T')[0];
+    const hoje = hojeBrasil();
+    const primeiroDiaDoMes = primeiroDiaDoMesBrasil();
 
     const [
       { data: vendasDoMes, error: vendasError },

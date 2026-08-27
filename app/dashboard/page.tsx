@@ -248,7 +248,7 @@ export default function DashboardPage() {
           <TabsContent value="relatorio" className="space-y-6 mt-4">
             {loading ? (
               <p className="text-center py-8 text-muted-foreground">Carregando...</p>
-            ) : !relatorio || relatorio.cestas_vendidas === 0 ? (
+            ) : !relatorio || relatorio.vendas_realizadas === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
                   Registre sua primeira venda do mês pra ver o relatório completo.
@@ -259,10 +259,10 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                   {[
                     { title: 'Faturamento bruto', value: brl(relatorio.faturamento_mes), icon: DollarSign, color: 'text-blue-600' },
-                    { title: 'Cestas vendidas', value: String(relatorio.cestas_vendidas), icon: ShoppingBag, color: 'text-green-600' },
+                    { title: 'Produtos vendidos', value: String(relatorio.produtos_vendidos), icon: ShoppingBag, color: 'text-green-600' },
                     { title: 'Ticket médio', value: brl(relatorio.ticket_medio_mes), icon: Package, color: 'text-purple-600' },
                     { title: 'Atendimentos realizados', value: String(relatorio.atendimentos_mes), icon: Users, color: 'text-orange-600' },
-                    { title: 'Vendas realizadas', value: String(relatorio.cestas_vendidas), icon: TrendingUp, color: 'text-emerald-600' },
+                    { title: 'Vendas realizadas', value: String(relatorio.vendas_realizadas), icon: TrendingUp, color: 'text-emerald-600' },
                     {
                       title: 'Conversão geral',
                       value: relatorio.atendimentos_mes > 0 ? `${relatorio.conversao_mes.toFixed(1)}%` : '—',
@@ -373,7 +373,7 @@ export default function DashboardPage() {
                           ))}
                           <tr className="bg-muted font-bold">
                             <td className="px-2 py-2">Total</td>
-                            <td className="px-2 py-2">{relatorio.cestas_vendidas}</td>
+                            <td className="px-2 py-2">{relatorio.vendas_realizadas}</td>
                             <td className="px-2 py-2">100%</td>
                             <td className="px-2 py-2">{brl(relatorio.faturamento_mes)}</td>
                             <td className="px-2 py-2">100%</td>

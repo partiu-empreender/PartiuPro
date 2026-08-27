@@ -80,7 +80,10 @@ export interface ProjecaoMeta {
 
 export interface RelatorioMensal {
   faturamento_mes: number;
-  cestas_vendidas: number;
+  /** Nº de transações no mês — uma por cliente/venda, independente da quantidade. */
+  vendas_realizadas: number;
+  /** Soma das QUANTIDADES de todos os itens: 2 cestas numa venda contam 2. */
+  produtos_vendidos: number;
   ticket_medio_mes: number;
   atendimentos_mes: number;
   conversao_mes: number;
@@ -155,15 +158,19 @@ export function calcularRelatorioMensal(
   atendimentosMes: number,
   metaMensal: number,
 ): RelatorioMensal {
-  const cestas_vendidas = vendasMes.length;
-  const faturamento_mes = vendasMes.reduce((sum, v) => sum + v.faturamento_total, 0);
-  const ticket_medio_mes = cestas_vendidas > 0 ? faturamento_mes / cestas_vendidas : 0;
-  const totalItens = vendasMes.reduce(
+  // Duas contagens diferentes, que antes eram a mesma e por isso apareciam
+  // iguais em dois cards do dashboard:
+  //  - vendas_realizadas = quantas transações houve (denominador do ticket médio)
+  //  - produtos_vendidos = quantos itens saíram (2 cestas numa venda = 2)
+  const vendas_realizadas = vendasMes.length;
+  const produtos_vendidos = vendasMes.reduce(
     (sum, v) => sum + (v.venda_itens?.reduce((s, item) => s + item.quantidade, 0) || 0),
     0,
   );
-  const pa_mes = atendimentosMes > 0 ? totalItens / atendimentosMes : 0;
-  const conversao_mes = atendimentosMes > 0 ? (cestas_vendidas / atendimentosMes) * 100 : 0;
+  const faturamento_mes = vendasMes.reduce((sum, v) => sum + v.faturamento_total, 0);
+  const ticket_medio_mes = vendas_realizadas > 0 ? faturamento_mes / vendas_realizadas : 0;
+  const pa_mes = atendimentosMes > 0 ? produtos_vendidos / atendimentosMes : 0;
+  const conversao_mes = atendimentosMes > 0 ? (vendas_realizadas / atendimentosMes) * 100 : 0;
   const falta_para_meta = Math.max(0, metaMensal - faturamento_mes);
   const percentual_meta = metaMensal > 0 ? (faturamento_mes / metaMensal) * 100 : 0;
 
@@ -172,7 +179,7 @@ export function calcularRelatorioMensal(
   const faixaAlta = faixas.find((f) => f.tipo === 'alta') ?? faixas.find((f) => f.tipo === 'unica');
 
   const insights: string[] = [];
-  if (cestas_vendidas > 0 && faixaAlta) {
+  if (vendas_realizadas > 0 && faixaAlta) {
     insights.push(
       `As vendas da faixa mais alta (${brl(faixaAlta.min)} a ${brl(faixaAlta.max)}) foram responsáveis por ${faixaAlta.percentualFaturamento.toFixed(0)}% do faturamento do mês.`,
     );
@@ -198,14 +205,14 @@ export function calcularRelatorioMensal(
     }
   }
 
-  const projecao_ticket_atual = calcularProjecao(metaMensal, ticket_medio_mes, cestas_vendidas);
+  const projecao_ticket_atual = calcularProjecao(metaMensal, ticket_medio_mes, vendas_realizadas);
 
   let projecao_ticket_referencia: RelatorioMensal['projecao_ticket_referencia'] = null;
   const faixaAltaReal = faixas.find((f) => f.tipo === 'alta');
   if (faixaAltaReal) {
     const valoresFaixaAlta = [...valores].sort((a, b) => a - b).slice(-faixaAltaReal.quantidade);
     const valorReferencia = mediana(valoresFaixaAlta);
-    const projecao = calcularProjecao(metaMensal, valorReferencia, cestas_vendidas);
+    const projecao = calcularProjecao(metaMensal, valorReferencia, vendas_realizadas);
     if (projecao) {
       projecao_ticket_referencia = { ...projecao, valorReferencia };
     }
@@ -213,7 +220,8 @@ export function calcularRelatorioMensal(
 
   return {
     faturamento_mes: parseFloat(faturamento_mes.toFixed(2)),
-    cestas_vendidas,
+    vendas_realizadas,
+    produtos_vendidos,
     ticket_medio_mes: parseFloat(ticket_medio_mes.toFixed(2)),
     atendimentos_mes: atendimentosMes,
     conversao_mes: parseFloat(conversao_mes.toFixed(2)),

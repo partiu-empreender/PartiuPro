@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isCurrentUserAdmin, supabaseAdmin } from '@/lib/supabase-server';
 import { calcularMetricasVendas } from '@/lib/metrics';
+import { hojeBrasil, primeiroDiaDoMesBrasil, diasAtrasBrasil, partesHojeBrasil } from '@/lib/datas';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const isAdmin = await isCurrentUserAdmin();
@@ -11,10 +12,10 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   try {
     const workspaceId = params.id;
 
-    const agora = new Date();
-    const hoje = agora.toISOString().split('T')[0];
-    const primeiroDiaDoMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().split('T')[0];
-    const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const hoje = hojeBrasil();
+    const primeiroDiaDoMes = primeiroDiaDoMesBrasil();
+    const trintaDiasAtras = diasAtrasBrasil(30);
+    const { ano: anoAtual, mes: mesAtual } = partesHojeBrasil();
 
     const [
       { data: perfil, error: perfilError },
@@ -55,8 +56,8 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         .from('metas')
         .select('meta_mensal')
         .eq('workspace_id', workspaceId)
-        .eq('mes', agora.getMonth() + 1)
-        .eq('ano', agora.getFullYear())
+        .eq('mes', mesAtual)
+        .eq('ano', anoAtual)
         .maybeSingle(),
     ]);
 
