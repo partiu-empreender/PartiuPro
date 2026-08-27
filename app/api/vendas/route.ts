@@ -214,12 +214,15 @@ export async function GET(request: NextRequest) {
     const hoje = agora.toISOString().split('T')[0];
     const primeiroDiaDoMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString().split('T')[0];
 
-    const [{ data: vendasDoMes, error: vendasError }, { data: atendimentosDoDia, error: atendimentosError }] =
-      await Promise.all([
-        supabase
-          .from('vendas_diarias')
-          .select(
-            `
+    const [
+      { data: vendasDoMes, error: vendasError },
+      { data: atendimentosDoDia, error: atendimentosError },
+      { data: atendimentosDoMes, error: atendimentosMesError },
+    ] = await Promise.all([
+      supabase
+        .from('vendas_diarias')
+        .select(
+          `
           id,
           data,
           cliente_nome,
@@ -233,17 +236,22 @@ export async function GET(request: NextRequest) {
             subtotal
           )
         `
-          )
-          .eq('workspace_id', user.id)
-          .gte('data', primeiroDiaDoMes)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('atendimentos_diarios')
-          .select('pessoas_atendidas')
-          .eq('workspace_id', user.id)
-          .eq('data', hoje)
-          .maybeSingle(),
-      ]);
+        )
+        .eq('workspace_id', user.id)
+        .gte('data', primeiroDiaDoMes)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('atendimentos_diarios')
+        .select('pessoas_atendidas')
+        .eq('workspace_id', user.id)
+        .eq('data', hoje)
+        .maybeSingle(),
+      supabase
+        .from('atendimentos_diarios')
+        .select('pessoas_atendidas')
+        .eq('workspace_id', user.id)
+        .gte('data', primeiroDiaDoMes),
+    ]);
 
     if (vendasError) {
       return NextResponse.json(
@@ -251,20 +259,29 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    if (atendimentosError) {
+    if (atendimentosError || atendimentosMesError) {
       return NextResponse.json(
-        { error: 'Erro ao buscar atendimentos', details: atendimentosError.message },
+        {
+          error: 'Erro ao buscar atendimentos',
+          details: atendimentosError?.message || atendimentosMesError?.message,
+        },
         { status: 500 }
       );
     }
 
     const vendas = (vendasDoMes || []).filter((venda) => venda.data === hoje);
     const atendimentos_hoje = atendimentosDoDia?.pessoas_atendidas ?? 0;
+    const atendimentos_mes = (atendimentosDoMes || []).reduce(
+      (sum, a) => sum + (a.pessoas_atendidas || 0),
+      0,
+    );
     const metricas = calcularMetricasVendas(vendas, vendasDoMes || [], atendimentos_hoje);
 
     return NextResponse.json({
       success: true,
       vendas,
+      vendas_mes: vendasDoMes || [],
+      atendimentos_mes,
       metricas,
     });
   } catch (error) {
