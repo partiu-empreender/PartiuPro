@@ -11,6 +11,7 @@ import PricingCalculator from '@/components/PricingCalculator';
 import { calcularRelatorioMensal, type RelatorioMensal } from '@/lib/metrics';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
+import { formatarTelefone } from '@/lib/telefone';
 import {
   ShoppingBag,
   Package,
@@ -73,6 +74,13 @@ interface ProdutoCatalogo {
   tipo: TipoProduto;
 }
 
+interface ClienteSugestao {
+  id: string;
+  name: string;
+  phone: string | null;
+  total_orders: number | null;
+}
+
 interface NovoItemForm {
   produto_id?: string;
   produto_nome: string;
@@ -98,6 +106,13 @@ export default function DashboardPage() {
 
   // Form de registro de venda
   const [clienteNome, setClienteNome] = useState('');
+  const [clienteTelefone, setClienteTelefone] = useState('');
+  // Preenchido só quando ela escolhe uma cliente já cadastrada na lista de
+  // sugestões. Vazio significa "cliente nova" — o servidor decide então se
+  // cria ou reaproveita, pelo telefone.
+  const [clienteId, setClienteId] = useState<string | undefined>(undefined);
+  const [sugestoesCliente, setSugestoesCliente] = useState<ClienteSugestao[]>([]);
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const [itens, setItens] = useState<NovoItemForm[]>([itemVazio()]);
   const [salvando, setSalvando] = useState(false);
   const [formError, setFormError] = useState('');
@@ -146,9 +161,47 @@ export default function DashboardPage() {
 
   const abrirModal = () => {
     setClienteNome('');
+    setClienteTelefone('');
+    setClienteId(undefined);
+    setSugestoesCliente([]);
+    setMostrarSugestoes(false);
     setItens([itemVazio()]);
     setFormError('');
     setShowRegistroVendaModal(true);
+  };
+
+  // Busca clientes já cadastradas enquanto ela digita o nome. É o que evita
+  // duplicata: o caminho normal passa a ser reconhecer e escolher, em vez de
+  // digitar de novo alguém que já está na base.
+  useEffect(() => {
+    const termo = clienteNome.trim();
+    if (!showRegistroVendaModal || clienteId || termo.length < 2) {
+      setSugestoesCliente([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/clientes?busca=${encodeURIComponent(termo)}`);
+        const result = await res.json();
+        if (res.ok) setSugestoesCliente((result.data || []).slice(0, 5));
+      } catch {
+        setSugestoesCliente([]);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [clienteNome, clienteId, showRegistroVendaModal]);
+
+  const escolherCliente = (cliente: ClienteSugestao) => {
+    setClienteId(cliente.id);
+    setClienteNome(cliente.name);
+    setClienteTelefone(cliente.phone ? formatarTelefone(cliente.phone) : '');
+    setMostrarSugestoes(false);
+  };
+
+  const limparClienteEscolhida = () => {
+    setClienteId(undefined);
+    setClienteNome('');
+    setClienteTelefone('');
   };
 
   const atualizarItem = (index: number, campo: keyof NovoItemForm, valor: string) => {
@@ -210,6 +263,8 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cliente_nome: clienteNome.trim(),
+          customer_id: clienteId,
+          cliente_telefone: clienteTelefone.trim() || undefined,
           items: itensValidos.map((item) => ({
             produto_id: item.produto_id,
             produto_nome: item.produto_nome.trim(),
@@ -621,12 +676,80 @@ export default function DashboardPage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Cliente</label>
-                <Input
-                  placeholder="Apelido ou primeiro nome — evite dados completos"
-                  value={clienteNome}
-                  onChange={(e) => setClienteNome(e.target.value)}
-                />
+
+                {clienteId ? (
+                  <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{clienteNome}</p>
+                      {clienteTelefone && (
+                        <p className="text-xs text-muted-foreground">{clienteTelefone}</p>
+                      )}
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={limparClienteEscolhida}>
+                      Trocar
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Input
+                      placeholder="Nome da cliente"
+                      value={clienteNome}
+                      autoComplete="off"
+                      onChange={(e) => {
+                        setClienteNome(e.target.value);
+                        setMostrarSugestoes(true);
+                      }}
+                      onFocus={() => setMostrarSugestoes(true)}
+                      // O clique numa sugestão dispara o blur antes do onClick;
+                      // o atraso dá tempo do clique ser processado.
+                      onBlur={() => setTimeout(() => setMostrarSugestoes(false), 150)}
+                    />
+                    {mostrarSugestoes && sugestoesCliente.length > 0 && (
+                      <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border bg-popover shadow-md">
+                        {sugestoesCliente.map((cliente) => (
+                          <li key={cliente.id}>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
+                              onClick={() => escolherCliente(cliente)}
+                            >
+                              <span className="min-w-0 truncate">
+                                {cliente.name}
+                                {cliente.phone && (
+                                  <span className="ml-2 text-xs text-muted-foreground">
+                                    {formatarTelefone(cliente.phone)}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {cliente.total_orders || 0} compra(s)
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {!clienteId && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Telefone <span className="font-normal text-muted-foreground">(opcional)</span>
+                  </label>
+                  <Input
+                    inputMode="tel"
+                    placeholder="(21) 99999-8888"
+                    value={clienteTelefone}
+                    onChange={(e) => setClienteTelefone(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Com o telefone, a cliente entra na sua base automaticamente e não vira duplicata
+                    na próxima compra.
+                  </p>
+                </div>
+              )}
 
               {catalogo.length > 0 ? (
                 <div className="space-y-4">

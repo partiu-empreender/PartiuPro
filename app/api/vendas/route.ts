@@ -12,6 +12,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { calcularMetricasVendas } from '@/lib/metrics';
 import { hojeBrasil, primeiroDiaDoMesBrasil } from '@/lib/datas';
+import { normalizarTelefone } from '@/lib/telefone';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 type TipoItem = 'produto' | 'adicional';
 
@@ -26,12 +28,72 @@ interface VendaItem {
 interface RegistrarVendaRequest {
   cliente_nome: string;
   customer_id?: string;
+  cliente_telefone?: string;
   bairro?: string;
   items: VendaItem[]; // Array de produtos
   shipping_cost?: number;
   notes?: string;
   delivery_date?: string;
   delivery_period?: string;
+}
+
+/**
+ * Descobre — ou cria — a cliente do CRM correspondente a esta venda.
+ *
+ * A Tania pediu que registrar a venda já fosse alimentando a base de clientes,
+ * sem ela precisar cadastrar antes. O risco óbvio disso é encher o CRM de
+ * duplicatas, então a busca vai do sinal mais forte pro mais fraco:
+ *
+ *   1. customer_id — ela escolheu a cliente na lista de sugestões. Confiável.
+ *   2. telefone — chave única no banco, é o identificador de verdade.
+ *   3. nome idêntico — rede de segurança pra quem não tem o telefone à mão.
+ *      Menos seguro (duas Marias diferentes viram uma), mas a tela mostra as
+ *      clientes existentes enquanto ela digita, então o caminho normal é ela
+ *      reconhecer e escolher em vez de cair aqui.
+ *
+ * Nunca lança: se algo falhar, a venda é registrada sem vínculo. Perder o
+ * vínculo é um aborrecimento; perder a venda é perder faturamento.
+ */
+async function resolverCliente(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  body: RegistrarVendaRequest,
+): Promise<string | null> {
+  try {
+    if (body.customer_id) return body.customer_id;
+
+    const nome = body.cliente_nome.trim();
+    const telefone = normalizarTelefone(body.cliente_telefone);
+
+    if (telefone) {
+      const { data: porTelefone } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .eq('phone', telefone)
+        .maybeSingle();
+      if (porTelefone) return porTelefone.id;
+    } else {
+      const { data: porNome } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .ilike('name', nome)
+        .limit(1);
+      if (porNome?.[0]) return porNome[0].id;
+    }
+
+    const { data: nova } = await supabase
+      .from('customers')
+      .insert({ workspace_id: workspaceId, name: nome, phone: telefone })
+      .select('id')
+      .single();
+
+    return nova?.id ?? null;
+  } catch (error) {
+    console.error('Não foi possível vincular a cliente à venda:', error);
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -85,11 +147,13 @@ export async function POST(request: NextRequest) {
     // 1. CRIAR VENDA DIÁRIA (1 registro por cliente/transação)
     // ============================================
 
+    const customerId = await resolverCliente(supabase, user.id, body);
+
     const { data: vendaDiaria, error: vendaError } = await supabase
       .from('vendas_diarias')
       .insert({
         workspace_id: user.id,
-        customer_id: body.customer_id || null,
+        customer_id: customerId,
         data: hojeBrasil(), // Data de hoje no fuso do Brasil, não em UTC
         cliente_nome: body.cliente_nome,
         bairro: body.bairro || null,
@@ -172,11 +236,14 @@ export async function POST(request: NextRequest) {
     // 3. ATUALIZAR MÉTRICAS DO CLIENTE
     // ============================================
 
-    if (body.customer_id) {
+    // Antes isto só rodava quando a tela enviava customer_id — o que ela nunca
+    // fazia. Agora usa a cliente resolvida acima, então os totais do CRM
+    // passam a ser alimentados de verdade a cada venda.
+    if (customerId) {
       const { data: customer } = await supabase
         .from('customers')
         .select('total_orders, total_spent')
-        .eq('id', body.customer_id)
+        .eq('id', customerId)
         .single();
 
       if (customer) {
@@ -187,7 +254,7 @@ export async function POST(request: NextRequest) {
             total_spent: (customer.total_spent || 0) + faturamento_total,
             last_order_at: new Date().toISOString(),
           })
-          .eq('id', body.customer_id);
+          .eq('id', customerId);
       }
     }
 
