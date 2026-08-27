@@ -76,8 +76,8 @@ export default function PricingCalculator() {
             onClick={() => setCurrentStep(step.id)}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
               currentStep === step.id
-                ? 'bg-purple-700 text-white'
-                : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-400'
+                ? 'bg-primary text-primary-foreground'
+                : 'border bg-card text-muted-foreground hover:border-primary/50'
             }`}
           >
             {step.title}
@@ -92,7 +92,7 @@ export default function PricingCalculator() {
             <CardTitle>Primeiro passo — o custo direto</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Quanto custa produzir esse produto? Inclui tudo, sem exceção:
             </p>
             <div className="space-y-3">
@@ -106,7 +106,7 @@ export default function PricingCalculator() {
               ].map((item, idx) => (
                 <div key={idx} className="flex gap-3 items-start">
                   <span className="text-xl">{item.icon}</span>
-                  <span className="text-sm text-gray-700">{item.text}</span>
+                  <span className="text-sm text-foreground">{item.text}</span>
                 </div>
               ))}
             </div>
@@ -116,7 +116,7 @@ export default function PricingCalculator() {
               </p>
             </div>
             <div className="flex justify-end mt-6">
-              <Button onClick={() => setCurrentStep(1)} className="bg-purple-700">
+              <Button onClick={() => setCurrentStep(1)}>
                 Próximo →
               </Button>
             </div>
@@ -131,7 +131,7 @@ export default function PricingCalculator() {
             <CardTitle>Segundo passo — despesas do negócio</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Gastos que mantêm sua operação funcionando:
             </p>
             <div className="space-y-3">
@@ -144,7 +144,7 @@ export default function PricingCalculator() {
               ].map((item, idx) => (
                 <div key={idx} className="flex gap-3 items-start">
                   <span className="text-xl">{item.icon}</span>
-                  <span className="text-sm text-gray-700">{item.text}</span>
+                  <span className="text-sm text-foreground">{item.text}</span>
                 </div>
               ))}
             </div>
@@ -158,7 +158,7 @@ export default function PricingCalculator() {
               <Button variant="outline" onClick={() => setCurrentStep(0)}>
                 ← Anterior
               </Button>
-              <Button onClick={() => setCurrentStep(2)} className="bg-purple-700">
+              <Button onClick={() => setCurrentStep(2)}>
                 Próximo →
               </Button>
             </div>
@@ -173,7 +173,7 @@ export default function PricingCalculator() {
             <CardTitle>Terceiro passo — a margem de lucro</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               A margem não é linear. Ela depende de três fatores:
             </p>
             <div className="space-y-3">
@@ -186,7 +186,7 @@ export default function PricingCalculator() {
                   <span className="text-xl">{item.icon}</span>
                   <div>
                     <strong className="text-sm">{item.title}</strong>
-                    <p className="text-sm text-gray-600">{item.desc}</p>
+                    <p className="text-sm text-muted-foreground">{item.desc}</p>
                   </div>
                 </div>
               ))}
@@ -201,7 +201,7 @@ export default function PricingCalculator() {
               <Button variant="outline" onClick={() => setCurrentStep(1)}>
                 ← Anterior
               </Button>
-              <Button onClick={() => setCurrentStep(3)} className="bg-purple-700">
+              <Button onClick={() => setCurrentStep(3)}>
                 Calculadora →
               </Button>
             </div>
@@ -218,7 +218,7 @@ export default function PricingCalculator() {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-600 block mb-2">
+                <label className="text-sm text-muted-foreground block mb-2">
                   Custo direto total (R$)
                 </label>
                 <Input
@@ -231,13 +231,13 @@ export default function PricingCalculator() {
               </div>
 
               <div>
-                <label className="text-sm text-gray-600 block mb-2">
+                <label className="text-sm text-muted-foreground block mb-2">
                   Custo fixo
                 </label>
                 <select
                   value={fixoPct}
                   onChange={(e) => setFixoPct(parseFloat(e.target.value))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   <option value="0.20">20%</option>
                   <option value="0.25">25%</option>
@@ -245,7 +245,7 @@ export default function PricingCalculator() {
               </div>
 
               <div>
-                <p className="text-sm text-gray-600 mb-3 font-medium">
+                <p className="text-sm text-muted-foreground mb-3 font-medium">
                   Margem de lucro desejada:
                 </p>
                 <div className="grid grid-cols-2 gap-3">
@@ -255,11 +255,11 @@ export default function PricingCalculator() {
                       onClick={() => setMargem(opcao.value as MargemType)}
                       className={`p-3 rounded-lg text-center transition-all ${
                         margem === opcao.value
-                          ? 'bg-purple-100 border-2 border-purple-500'
-                          : 'bg-gray-100 border border-gray-300 hover:border-purple-300'
+                          ? 'border-2 border-primary bg-primary/10'
+                          : 'border bg-muted hover:border-primary/50'
                       }`}
                     >
-                      <p className="text-xs text-gray-600">{opcao.label}</p>
+                      <p className="text-xs text-muted-foreground">{opcao.label}</p>
                       <p className="font-bold text-purple-700">{Math.round(opcao.value * 100)}%</p>
                     </button>
                   ))}
@@ -302,7 +302,7 @@ export default function PricingCalculator() {
               <Button variant="outline" onClick={() => setCurrentStep(2)}>
                 ← Anterior
               </Button>
-              <Button onClick={() => setCurrentStep(4)} className="bg-purple-700">
+              <Button onClick={() => setCurrentStep(4)}>
                 Ver exemplo →
               </Button>
             </div>
@@ -318,7 +318,7 @@ export default function PricingCalculator() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2 text-sm">
-              <p className="text-gray-600 font-medium mb-3">Custo direto detalhado:</p>
+              <p className="text-muted-foreground font-medium mb-3">Custo direto detalhado:</p>
               {[
                 { nome: 'Suco 300 ml', valor: 10.0 },
                 { nome: 'Drip coffee', valor: 2.5 },
@@ -336,11 +336,11 @@ export default function PricingCalculator() {
                 { nome: 'Material gráfico + fita', valor: 2.4 },
               ].map((item, idx) => (
                 <div key={idx} className="flex justify-between">
-                  <span className="text-gray-700">{item.nome}</span>
-                  <span className="font-semibold text-gray-900">R$ {item.valor.toFixed(2)}</span>
+                  <span className="text-foreground">{item.nome}</span>
+                  <span className="font-semibold text-foreground">R$ {item.valor.toFixed(2)}</span>
                 </div>
               ))}
-              <div className="flex justify-between pt-2 border-t font-bold text-gray-900">
+              <div className="flex justify-between pt-2 border-t font-bold text-foreground">
                 <span>Custo direto</span>
                 <span>R$ 75,16</span>
               </div>
@@ -380,7 +380,7 @@ export default function PricingCalculator() {
               <Button variant="outline" onClick={() => setCurrentStep(3)}>
                 ← Calculadora
               </Button>
-              <Button onClick={() => setCurrentStep(0)} className="bg-purple-700">
+              <Button onClick={() => setCurrentStep(0)}>
                 Recomeçar
               </Button>
             </div>

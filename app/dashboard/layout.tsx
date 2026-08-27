@@ -8,7 +8,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar nome={nome} isAdmin={isAdmin} />
+      <Navbar nome={nome} email={result?.user?.email} isAdmin={isAdmin} />
       {children}
     </div>
   );

@@ -111,13 +111,13 @@ export default function ProdutosPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="container mx-auto space-y-6 p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Meus produtos</h1>
           <p className="mt-2 text-muted-foreground">Preço, custo, margem e lucro unitário.</p>
         </div>
-        <Button onClick={abrirNovo} className="flex items-center gap-2">
+        <Button onClick={abrirNovo} className="flex items-center gap-2 sm:shrink-0">
           <Plus className="h-4 w-4" /> Novo produto
         </Button>
       </div>
@@ -125,9 +125,15 @@ export default function ProdutosPage() {
       {loading ? (
         <p className="text-center py-8 text-muted-foreground">Carregando...</p>
       ) : produtos.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Nenhum produto cadastrado ainda. Clique em &quot;Novo produto&quot; para começar.
+        <Card className="mx-auto max-w-md">
+          <CardContent className="space-y-4 p-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              Você ainda não cadastrou nenhum produto. Cadastre suas cestas pra calcular margem e agilizar o
+              registro de vendas.
+            </p>
+            <Button onClick={abrirNovo} className="w-full">
+              <Plus className="mr-2 h-4 w-4" /> Cadastrar meu primeiro produto
+            </Button>
           </CardContent>
         </Card>
       ) : (

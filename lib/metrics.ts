@@ -188,7 +188,14 @@ export function calcularRelatorioMensal(
         `Uma única venda de ${brl(maiorVenda)} representou ${pctMaiorVenda.toFixed(0)}% do faturamento total.`,
       );
     }
-    insights.push(`Sua conversão geral foi de ${conversao_mes.toFixed(1)}%.`);
+    // Sem atendimento registrado a conversão não é 0% — é incalculável.
+    if (atendimentosMes > 0) {
+      insights.push(`Sua conversão geral foi de ${conversao_mes.toFixed(1)}%.`);
+    } else {
+      insights.push(
+        'Registre seus atendimentos do mês pra descobrir sua taxa de conversão (quantas pessoas abordadas viram venda).',
+      );
+    }
   }
 
   const projecao_ticket_atual = calcularProjecao(metaMensal, ticket_medio_mes, cestas_vendidas);

@@ -13,6 +13,7 @@ import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { calcularMetricasVendas } from '@/lib/metrics';
 
 interface VendaItem {
+  produto_id?: string; // preenchido quando o item veio do catálogo de produtos
   produto_nome: string;
   quantidade: number;
   preco_unitario: number;
@@ -114,6 +115,7 @@ export async function POST(request: NextRequest) {
 
     const itemsParaInserir = body.items.map((item) => ({
       venda_id: vendaDiaria.id,
+      produto_id: item.produto_id || null,
       produto_nome: item.produto_nome.trim(),
       quantidade: item.quantidade,
       preco_unitario: item.preco_unitario,

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,7 +55,14 @@ interface VendaDiaria {
   venda_itens: VendaItemView[];
 }
 
+interface ProdutoCatalogo {
+  id: string;
+  name: string;
+  price: number;
+}
+
 interface NovoItemForm {
+  produto_id?: string;
   produto_nome: string;
   quantidade: string;
   preco_unitario: string;
@@ -62,12 +70,19 @@ interface NovoItemForm {
 
 const itemVazio = (): NovoItemForm => ({ produto_nome: '', quantidade: '1', preco_unitario: '' });
 
+const itemEstaVazio = (item: NovoItemForm) =>
+  !item.produto_nome.trim() && !item.preco_unitario.trim();
+
 export default function DashboardPage() {
   const [vendas, setVendas] = useState<VendaDiaria[]>([]);
   const [relatorio, setRelatorio] = useState<RelatorioMensal | null>(null);
+  const [catalogo, setCatalogo] = useState<ProdutoCatalogo[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('relatorio');
   const [showRegistroVendaModal, setShowRegistroVendaModal] = useState(false);
+  // Só a primeira carga mostra "Carregando..." — as atualizações de 30 em 30s
+  // acontecem em silêncio, senão a tela inteira pisca a cada polling.
+  const jaCarregou = useRef(false);
 
   // Form de registro de venda
   const [clienteNome, setClienteNome] = useState('');
@@ -77,20 +92,22 @@ export default function DashboardPage() {
 
   const carregarMetricas = async () => {
     try {
-      setLoading(true);
       const anoAtual = new Date().getFullYear();
       const mesAtual = new Date().getMonth() + 1;
 
-      const [resVendas, resMetas] = await Promise.all([
+      const [resVendas, resMetas, resProdutos] = await Promise.all([
         fetch('/api/vendas'),
         fetch(`/api/metas?ano=${anoAtual}`),
+        fetch('/api/produtos'),
       ]);
       const result = await resVendas.json();
       const metasResult = await resMetas.json();
+      const produtosResult = await resProdutos.json();
 
       if (!resVendas.ok) throw new Error(result.error || 'Erro ao carregar vendas');
 
       setVendas(result.vendas || []);
+      setCatalogo(resProdutos.ok ? produtosResult.data || [] : []);
 
       const metaDoMes: number =
         (metasResult.data || []).find((m: { mes: number; meta_mensal: number }) => m.mes === mesAtual)
@@ -102,7 +119,10 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('Erro ao carregar métricas:', error);
     } finally {
-      setLoading(false);
+      if (!jaCarregou.current) {
+        jaCarregou.current = true;
+        setLoading(false);
+      }
     }
   };
 
@@ -120,11 +140,36 @@ export default function DashboardPage() {
   };
 
   const atualizarItem = (index: number, campo: keyof NovoItemForm, valor: string) => {
-    setItens((atual) => atual.map((item, i) => (i === index ? { ...item, [campo]: valor } : item)));
+    setItens((atual) =>
+      atual.map((item, i) => {
+        if (i !== index) return item;
+        // Editar nome ou preço à mão desfaz o vínculo com o produto do catálogo.
+        const desvincula = campo === 'produto_nome' || campo === 'preco_unitario';
+        return { ...item, [campo]: valor, ...(desvincula ? { produto_id: undefined } : {}) };
+      }),
+    );
   };
 
   const adicionarItem = () => setItens((atual) => [...atual, itemVazio()]);
   const removerItem = (index: number) => setItens((atual) => atual.filter((_, i) => i !== index));
+
+  // Atalho do catálogo: preenche a última linha se ela estiver em branco,
+  // senão adiciona uma nova — evita deixar linha vazia sobrando.
+  const aplicarProduto = (produto: ProdutoCatalogo) => {
+    const novoItem: NovoItemForm = {
+      produto_id: produto.id,
+      produto_nome: produto.name,
+      quantidade: '1',
+      preco_unitario: String(produto.price),
+    };
+    setItens((atual) => {
+      const ultimo = atual[atual.length - 1];
+      if (ultimo && itemEstaVazio(ultimo)) {
+        return [...atual.slice(0, -1), novoItem];
+      }
+      return [...atual, novoItem];
+    });
+  };
 
   const totalVenda = itens.reduce((sum, item) => {
     const qtd = parseFloat(item.quantidade) || 0;
@@ -154,6 +199,7 @@ export default function DashboardPage() {
         body: JSON.stringify({
           cliente_nome: clienteNome.trim(),
           items: itensValidos.map((item) => ({
+            produto_id: item.produto_id,
             produto_nome: item.produto_nome.trim(),
             quantidade: parseFloat(item.quantidade) || 1,
             preco_unitario: parseFloat(item.preco_unitario) || 0,
@@ -179,14 +225,14 @@ export default function DashboardPage() {
   return (
     <>
       <div className="container mx-auto p-6">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Dashboard de Vendas</h1>
             <p className="mt-2 text-muted-foreground">
               Visão geral do seu negócio em tempo real
             </p>
           </div>
-          <Button onClick={abrirModal} className="flex items-center gap-2">
+          <Button onClick={abrirModal} className="flex items-center gap-2 sm:shrink-0">
             <Plus className="h-4 w-4" />
             Registrar Venda
           </Button>
@@ -217,7 +263,12 @@ export default function DashboardPage() {
                     { title: 'Ticket médio', value: brl(relatorio.ticket_medio_mes), icon: Package, color: 'text-purple-600' },
                     { title: 'Atendimentos realizados', value: String(relatorio.atendimentos_mes), icon: Users, color: 'text-orange-600' },
                     { title: 'Vendas realizadas', value: String(relatorio.cestas_vendidas), icon: TrendingUp, color: 'text-emerald-600' },
-                    { title: 'Conversão geral', value: `${relatorio.conversao_mes.toFixed(1)}%`, icon: Target, color: 'text-pink-600' },
+                    {
+                      title: 'Conversão geral',
+                      value: relatorio.atendimentos_mes > 0 ? `${relatorio.conversao_mes.toFixed(1)}%` : '—',
+                      icon: Target,
+                      color: 'text-pink-600',
+                    },
                   ].map((c) => {
                     const Icon = c.icon;
                     return (
@@ -270,6 +321,7 @@ export default function DashboardPage() {
                                 outerRadius={60}
                                 startAngle={90}
                                 endAngle={-270}
+                                isAnimationActive={false}
                               >
                                 <Cell fill="#7c3aed" />
                                 <Cell fill="#e5e7eb" />
@@ -344,6 +396,7 @@ export default function DashboardPage() {
                             nameKey="name"
                             innerRadius={50}
                             outerRadius={80}
+                            isAnimationActive={false}
                             label={(d) => `${((d.percent ?? 0) * 100).toFixed(0)}%`}
                           >
                             {relatorio.faixas.map((f) => (
@@ -491,6 +544,37 @@ export default function DashboardPage() {
                   onChange={(e) => setClienteNome(e.target.value)}
                 />
               </div>
+
+              {catalogo.length > 0 ? (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Meus produtos</label>
+                  <div className="flex flex-wrap gap-2">
+                    {catalogo.map((produto) => (
+                      <Button
+                        key={produto.id}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => aplicarProduto(produto)}
+                      >
+                        <Plus className="mr-1 h-3 w-3" />
+                        {produto.name} · {brl(produto.price)}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Clique pra adicionar já preenchido, ou digite um item avulso abaixo.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Dica: cadastre seus produtos em{' '}
+                  <Link href="/dashboard/produtos" className="text-primary hover:underline">
+                    Meus produtos
+                  </Link>{' '}
+                  pra adicioná-los aqui com um clique.
+                </p>
+              )}
 
               <div className="space-y-3">
                 <label className="text-sm font-medium">Itens</label>
