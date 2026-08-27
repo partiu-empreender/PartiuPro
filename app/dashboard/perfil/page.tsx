@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -170,6 +171,12 @@ export default function PerfilPage() {
           )}
         </CardContent>
       </Card>
+
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        <Link href="/dashboard/privacidade" className="hover:underline">
+          Política de privacidade, meus dados e encerramento de conta
+        </Link>
+      </p>
     </div>
   );
 }

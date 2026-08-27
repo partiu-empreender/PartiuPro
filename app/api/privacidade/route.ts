@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
-import { MARKETING_CONSENT_VERSION } from '@/lib/legal';
 
 export async function GET() {
   try {
@@ -36,63 +35,6 @@ export async function GET() {
         termos_aceitos: termos ?? null,
         consentimento_divulgacao: consentimento ?? { granted: false },
       },
-    });
-  } catch (error) {
-    console.error('Erro na API de privacidade:', error);
-    return NextResponse.json(
-      { error: 'Erro interno do servidor', details: error instanceof Error ? error.message : 'Desconhecido' },
-      { status: 500 },
-    );
-  }
-}
-
-export async function PATCH(request: NextRequest) {
-  try {
-    const supabase = await getRouteHandlerSupabaseClient();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
-
-    const { marketing_consent } = await request.json();
-
-    if (typeof marketing_consent !== 'boolean') {
-      return NextResponse.json({ error: 'Informe marketing_consent (true/false)' }, { status: 400 });
-    }
-
-    const now = new Date().toISOString();
-
-    const { data, error } = await supabase
-      .from('marketing_consents')
-      .upsert(
-        {
-          user_id: user.id,
-          version: MARKETING_CONSENT_VERSION,
-          granted: marketing_consent,
-          granted_at: marketing_consent ? now : undefined,
-          revoked_at: marketing_consent ? null : now,
-        },
-        { onConflict: 'user_id' },
-      )
-      .select('version, granted, granted_at, revoked_at')
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { error: 'Erro ao atualizar autorização de divulgação', details: error.message },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      data,
-      message: marketing_consent ? 'Autorização concedida' : 'Autorização revogada',
     });
   } catch (error) {
     console.error('Erro na API de privacidade:', error);

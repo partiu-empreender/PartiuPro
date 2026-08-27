@@ -25,10 +25,10 @@ Por quanto tempo. Enquanto sua conta estiver ativa e por 90 dias após o encerra
 
 Onde ficam. Em infraestrutura que pode armazenar dados fora do Brasil, com garantias contratuais equivalentes às da LGPD.
 
-Seus direitos. A qualquer momento, na aba Privacidade, você pode consultar quais dados temos sobre você, corrigi-los, baixar uma cópia completa, retirar a autorização de divulgação e encerrar sua conta. Também pode falar com a gente por ${EMAIL_PRIVACIDADE} — respondemos em até 15 dias.`;
+Seus direitos. A qualquer momento, no seu Perfil, você pode consultar quais dados temos sobre você, corrigi-los, baixar uma cópia completa, solicitar por e-mail a retirada da autorização de divulgação, e encerrar sua conta. Também pode falar com a gente por ${EMAIL_PRIVACIDADE} — respondemos em até 15 dias.`;
 
 export const MARKETING_CONSENT_LABEL =
-  'Autorizo que imagens da plataforma contendo meus dados sejam usadas em materiais de divulgação do Partiu PRO. Posso retirar esta autorização quando quiser, sem prejuízo ao meu acesso à ferramenta.';
+  'Autorizo que imagens da plataforma contendo meus dados sejam usadas em materiais de divulgação do Partiu PRO. Posso solicitar a retirada dessa autorização por e-mail a qualquer momento, sem prejuízo ao meu acesso à ferramenta.';
 
 export const TERMS_CHECKBOX_LABEL = 'Li e estou ciente de como meus dados são tratados no Partiu PRO.';
 
@@ -58,7 +58,7 @@ Se você registrar informações sobre clientes do seu negócio, registre apenas
 Produzimos fotos, vídeos e capturas de tela mostrando o Partiu PRO em funcionamento, para divulgar a ferramenta em nossos canais e materiais comerciais. Na maior parte das vezes, esse material usa dados de demonstração fictícios.
 Quando o material contiver dados reais identificáveis de uma usuária, isso só acontece mediante autorização específica dela, dada em campo separado no cadastro ou na aba Privacidade. Essa autorização:
 • é opcional — recusar não afeta em nada o seu acesso à ferramenta;
-• pode ser retirada a qualquer momento na aba Privacidade;
+• pode ser retirada a qualquer momento, mediante solicitação pelo canal de contato do item 10;
 • não abrange sua imagem pessoal, voz ou depoimento, que dependeriam de autorização própria e distinta;
 • nunca abrange nomes de clientes do seu negócio, que são mascarados em qualquer captura.
 Se você retirar a autorização, deixamos de produzir novo material com seus dados e removemos o material existente dos canais sob nosso controle, quando tecnicamente possível. Material que já tenha sido baixado, compartilhado ou republicado por terceiros pode permanecer fora do nosso alcance — por isso é importante considerar essa autorização com atenção.
@@ -76,12 +76,12 @@ A LGPD garante que você possa, a qualquer momento:
 • obter uma cópia completa dos seus dados, em formato eletrônico;
 • pedir a eliminação de dados desnecessários, excessivos ou tratados fora do previsto nesta política;
 • se opor ao tratamento baseado em legítimo interesse (item 2b), explicando o motivo;
-• retirar a autorização de divulgação (item 6), sem qualquer prejuízo ao seu acesso;
+• solicitar a retirada da autorização de divulgação (item 6) pelo canal do item 10, sem qualquer prejuízo ao seu acesso;
 • encerrar sua conta.
-As opções acima estão disponíveis diretamente na aba Privacidade dentro da plataforma. Você também pode nos escrever pelo canal do item 10.
+As demais opções estão disponíveis no seu Perfil, dentro da plataforma. Você também pode nos escrever pelo canal do item 10.
 
 10. Canal de contato.
 ${EMAIL_PRIVACIDADE}. Respondemos em até 15 dias contados do recebimento do pedido.
 
 11. Alterações nesta política.
-Ajustes de redação que não mudem o sentido são publicados aqui com a data de atualização. Mudanças que alterem para que usamos seus dados, quem tem acesso a eles ou por quanto tempo os guardamos são comunicadas a você antes de entrarem em vigor, e pedimos um novo aceite na próxima vez que você entrar na plataforma. Você sempre pode consultar qual versão aceitou, e quando, na aba Privacidade.`;
+Ajustes de redação que não mudem o sentido são publicados aqui com a data de atualização. Mudanças que alterem para que usamos seus dados, quem tem acesso a eles ou por quanto tempo os guardamos são comunicadas a você antes de entrarem em vigor, e pedimos um novo aceite na próxima vez que você entrar na plataforma. Você sempre pode consultar qual versão aceitou, e quando, no seu Perfil.`;

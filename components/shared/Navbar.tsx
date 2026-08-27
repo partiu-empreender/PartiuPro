@@ -17,7 +17,6 @@ const LINKS = [
   { href: '/dashboard/atendimentos', label: 'Atendimentos' },
   { href: '/dashboard/metas', label: 'Metas' },
   { href: '/dashboard/perfil', label: 'Perfil' },
-  { href: '/dashboard/privacidade', label: 'Privacidade' },
 ];
 
 export default function Navbar({ nome, isAdmin }: NavbarProps) {
