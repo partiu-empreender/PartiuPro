@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 
+// 'produto' = item principal (cesta, tábua de frios)
+// 'adicional' = item vendido junto (buquê, arranjo, orquídea)
+const TIPOS = ['produto', 'adicional'] as const;
+type TipoProduto = (typeof TIPOS)[number];
+
 interface CriarProdutoRequest {
   name: string;
   price: number;
   cost?: number;
+  tipo?: TipoProduto;
 }
 
 export async function GET() {
@@ -22,7 +28,7 @@ export async function GET() {
 
     const { data: produtos, error } = await supabase
       .from('products')
-      .select('id, name, price, cost, created_at')
+      .select('id, name, price, cost, tipo, created_at')
       .eq('workspace_id', user.id)
       .order('created_at', { ascending: true });
 
@@ -70,6 +76,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'O custo não pode ser maior que o preço' }, { status: 400 });
     }
 
+    // Sem tipo informado, cai em 'produto' — mesmo default do banco, pra
+    // clientes antigos continuarem funcionando sem mudança.
+    const tipo: TipoProduto = TIPOS.includes(body.tipo as TipoProduto)
+      ? (body.tipo as TipoProduto)
+      : 'produto';
+
     const { data: produto, error } = await supabase
       .from('products')
       .insert({
@@ -78,6 +90,7 @@ export async function POST(request: NextRequest) {
         description: '',
         price: body.price,
         cost,
+        tipo,
         is_active: true,
       })
       .select()

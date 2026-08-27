@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 
+const TIPOS = ['produto', 'adicional'] as const;
+type TipoProduto = (typeof TIPOS)[number];
+
 interface AtualizarProdutoRequest {
   name?: string;
   price?: number;
   cost?: number;
+  tipo?: TipoProduto;
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
@@ -26,6 +30,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (body.name !== undefined) patch.name = body.name.trim();
     if (body.price !== undefined) patch.price = body.price;
     if (body.cost !== undefined) patch.cost = body.cost;
+    // Reclassificar aqui muda só o catálogo. As vendas já registradas guardam
+    // o próprio tipo (venda_itens.tipo), então o histórico não é reescrito.
+    if (body.tipo !== undefined && TIPOS.includes(body.tipo)) patch.tipo = body.tipo;
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });

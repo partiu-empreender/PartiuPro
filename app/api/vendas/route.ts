@@ -13,11 +13,14 @@ import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { calcularMetricasVendas } from '@/lib/metrics';
 import { hojeBrasil, primeiroDiaDoMesBrasil } from '@/lib/datas';
 
+type TipoItem = 'produto' | 'adicional';
+
 interface VendaItem {
   produto_id?: string; // preenchido quando o item veio do catálogo de produtos
   produto_nome: string;
   quantidade: number;
   preco_unitario: number;
+  tipo?: TipoItem; // só usado quando o item é avulso, sem produto_id
 }
 
 interface RegistrarVendaRequest {
@@ -114,6 +117,27 @@ export async function POST(request: NextRequest) {
     // 2. CRIAR ITENS DA VENDA (múltiplos registros, um por produto)
     // ============================================
 
+    // O tipo do item vem do CATÁLOGO, não do navegador: quem veio de um
+    // produto cadastrado herda o tipo de lá, consultado no banco com a RLS da
+    // própria aluna. Assim o ranking por categoria não pode ser falsificado
+    // por um cliente adulterado, e item avulso (digitado na hora, sem
+    // produto_id) usa o que foi escolhido na tela, com 'produto' de default.
+    const idsDoCatalogo = body.items
+      .map((item) => item.produto_id)
+      .filter((id): id is string => Boolean(id));
+
+    const tipoPorProduto = new Map<string, TipoItem>();
+    if (idsDoCatalogo.length > 0) {
+      const { data: produtosDoCatalogo } = await supabase
+        .from('products')
+        .select('id, tipo')
+        .in('id', idsDoCatalogo);
+
+      for (const produto of produtosDoCatalogo || []) {
+        tipoPorProduto.set(produto.id, produto.tipo === 'adicional' ? 'adicional' : 'produto');
+      }
+    }
+
     const itemsParaInserir = body.items.map((item) => ({
       venda_id: vendaDiaria.id,
       produto_id: item.produto_id || null,
@@ -121,6 +145,9 @@ export async function POST(request: NextRequest) {
       quantidade: item.quantidade,
       preco_unitario: item.preco_unitario,
       subtotal: item.quantidade * item.preco_unitario,
+      tipo:
+        (item.produto_id && tipoPorProduto.get(item.produto_id)) ||
+        (item.tipo === 'adicional' ? 'adicional' : 'produto'),
     }));
 
     const { data: vendaItens, error: itensError } = await supabase
@@ -235,7 +262,8 @@ export async function GET(request: NextRequest) {
             produto_nome,
             quantidade,
             preco_unitario,
-            subtotal
+            subtotal,
+            tipo
           )
         `
         )

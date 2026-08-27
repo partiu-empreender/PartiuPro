@@ -57,10 +57,13 @@ interface VendaDiaria {
   venda_itens: VendaItemView[];
 }
 
+type TipoProduto = 'produto' | 'adicional';
+
 interface ProdutoCatalogo {
   id: string;
   name: string;
   price: number;
+  tipo: TipoProduto;
 }
 
 interface NovoItemForm {
@@ -546,22 +549,35 @@ export default function DashboardPage() {
               </div>
 
               {catalogo.length > 0 ? (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Meus produtos</label>
-                  <div className="flex flex-wrap gap-2">
-                    {catalogo.map((produto) => (
-                      <Button
-                        key={produto.id}
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => aplicarProduto(produto)}
-                      >
-                        <Plus className="mr-1 h-3 w-3" />
-                        {produto.name} · {brl(produto.price)}
-                      </Button>
-                    ))}
-                  </div>
+                <div className="space-y-4">
+                  {(
+                    [
+                      { tipo: 'produto' as const, rotulo: 'Produtos' },
+                      { tipo: 'adicional' as const, rotulo: 'Adicionais' },
+                    ]
+                  ).map(({ tipo, rotulo }) => {
+                    const itens = catalogo.filter((p) => (p.tipo ?? 'produto') === tipo);
+                    if (itens.length === 0) return null;
+                    return (
+                      <div key={tipo} className="space-y-2">
+                        <label className="text-sm font-medium">{rotulo}</label>
+                        <div className="flex flex-wrap gap-2">
+                          {itens.map((produto) => (
+                            <Button
+                              key={produto.id}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => aplicarProduto(produto)}
+                            >
+                              <Plus className="mr-1 h-3 w-3" />
+                              {produto.name} · {brl(produto.price)}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                   <p className="text-xs text-muted-foreground">
                     Clique pra adicionar já preenchido, ou digite um item avulso abaixo.
                   </p>

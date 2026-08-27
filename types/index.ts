@@ -50,6 +50,9 @@ export interface ProductCategory {
   created_at: string;
 }
 
+/** 'produto' = item principal (cesta). 'adicional' = item vendido junto (buquê, arranjo). */
+export type TipoProduto = 'produto' | 'adicional';
+
 export interface Product {
   id: string;
   workspace_id: string;
@@ -58,6 +61,7 @@ export interface Product {
   description: string;
   price: number;
   cost: number;
+  tipo: TipoProduto;
   image_url?: string;
   stock?: number;
   is_active: boolean;
@@ -86,6 +90,11 @@ export interface Meta {
   updated_at: string;
 }
 
+/**
+ * NÃO USADA. Resquício do e-commerce que nunca foi ligado (RLS habilitada sem
+ * nenhuma policy no banco). Adicionais hoje vivem em Product.tipo — ver a
+ * migration 006_produto_vs_adicional.sql.
+ */
 export interface ProductAdditional {
   id: string;
   product_id: string;
