@@ -24,6 +24,7 @@ interface NavbarProps {
 
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/dashboard/clientes', label: 'Clientes' },
   { href: '/dashboard/produtos', label: 'Produtos' },
   { href: '/dashboard/atendimentos', label: 'Atendimentos' },
   { href: '/dashboard/metas', label: 'Metas' },
