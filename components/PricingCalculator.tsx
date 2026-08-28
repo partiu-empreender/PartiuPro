@@ -77,7 +77,7 @@ export default function PricingCalculator() {
             className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
               currentStep === step.id
                 ? 'bg-primary text-primary-foreground'
-                : 'border bg-card text-muted-foreground hover:border-primary/50'
+                : 'border border-white/60 bg-white/60 text-muted-foreground backdrop-blur-md hover:border-primary/50'
             }`}
           >
             {step.title}
@@ -110,7 +110,7 @@ export default function PricingCalculator() {
                 </div>
               ))}
             </div>
-            <div className="bg-purple-50 border-l-4 border-purple-400 p-4 mt-4">
+            <div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50/70 p-4 backdrop-blur-sm">
               <p className="text-sm text-purple-900">
                 <strong>Regra:</strong> se você usou no produto, entra no custo. Até o metro de fita conta.
               </p>
@@ -148,7 +148,7 @@ export default function PricingCalculator() {
                 </div>
               ))}
             </div>
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mt-4">
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 backdrop-blur-sm">
               <p className="text-sm text-yellow-900">
                 <strong>Não sabe o total exato ainda?</strong> Use de 20% a 25% sobre o valor do custo direto.
                 É um ponto de partida seguro até você mapear todos os seus custos fixos.
@@ -191,7 +191,7 @@ export default function PricingCalculator() {
                 </div>
               ))}
             </div>
-            <div className="bg-green-50 border-l-4 border-green-500 p-4 mt-4">
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 backdrop-blur-sm">
               <p className="text-sm text-green-900">
                 Não precifique pelo que "acha que o cliente vai pagar". Precifique pelo que garante sua margem real.
                 Cliente que só compra no barato não é seu cliente ideal.
@@ -237,7 +237,7 @@ export default function PricingCalculator() {
                 <select
                   value={fixoPct}
                   onChange={(e) => setFixoPct(parseFloat(e.target.value))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="flex h-11 w-full rounded-xl border border-input bg-white/70 px-4 py-2 text-sm backdrop-blur-md transition-colors focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-ring/30"
                 >
                   <option value="0.20">20%</option>
                   <option value="0.25">25%</option>
@@ -253,10 +253,10 @@ export default function PricingCalculator() {
                     <button
                       key={opcao.value}
                       onClick={() => setMargem(opcao.value as MargemType)}
-                      className={`p-3 rounded-lg text-center transition-all ${
+                      className={`rounded-2xl p-3 text-center transition-all ${
                         margem === opcao.value
                           ? 'border-2 border-primary bg-primary/10'
-                          : 'border bg-muted hover:border-primary/50'
+                          : 'border border-white/60 bg-white/60 backdrop-blur-md hover:border-primary/50'
                       }`}
                     >
                       <p className="text-xs text-muted-foreground">{opcao.label}</p>
@@ -268,7 +268,7 @@ export default function PricingCalculator() {
             </div>
 
             {/* Resultado */}
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-3">
+            <div className="space-y-3 rounded-2xl border border-purple-200 bg-purple-50/70 p-4 backdrop-blur-sm">
               <div className="flex justify-between text-sm">
                 <span className="text-purple-700">Custo direto</span>
                 <span className="font-semibold text-purple-900">{formatMoney(resultado.custo)}</span>
@@ -291,7 +291,7 @@ export default function PricingCalculator() {
               </div>
             </div>
 
-            <div className="bg-green-50 border-l-4 border-green-500 p-4">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 backdrop-blur-sm">
               <p className="text-sm text-green-900">
                 Arredonde para um valor comercialmente atraente. Ex: R$178,51 → R$179 ou R$180.
                 Preço quebrado não existe no mercado de presentes.
@@ -346,7 +346,7 @@ export default function PricingCalculator() {
               </div>
             </div>
 
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-3">
+            <div className="space-y-3 rounded-2xl border border-purple-200 bg-purple-50/70 p-4 backdrop-blur-sm">
               <div className="flex justify-between text-sm">
                 <span className="text-purple-700">Custo direto</span>
                 <span className="font-semibold">R$ 75,16</span>
@@ -369,7 +369,7 @@ export default function PricingCalculator() {
               </div>
             </div>
 
-            <div className="bg-green-50 border-l-4 border-green-500 p-4">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 backdrop-blur-sm">
               <p className="text-sm text-green-900">
                 R$179 é o preço com margem saudável — não é caro. É o preço justo para um produto que tem
                 custo, tempo e dedicação embutidos.

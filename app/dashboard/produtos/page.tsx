@@ -261,8 +261,8 @@ export default function ProdutosPage() {
                     onClick={() => setForm((f) => ({ ...f, tipo: t }))}
                     className={
                       form.tipo === t
-                        ? 'rounded-md border border-primary bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground'
-                        : 'rounded-md border bg-background px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent'
+                        ? 'rounded-full border border-primary bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground'
+                        : 'rounded-full border border-white/60 bg-white/60 px-4 py-2 text-sm font-medium text-muted-foreground backdrop-blur-md hover:bg-accent'
                     }
                   >
                     {ROTULOS[t].plural.replace(/s$/, '')}

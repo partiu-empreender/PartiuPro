@@ -2,8 +2,7 @@ import { cn } from '@/lib/utils';
 
 // Fonte única de largura e respiro de página. Toda tela do app passa por
 // aqui — se o espaçamento precisar mudar, muda só neste arquivo.
-// A Navbar usa as mesmas classes horizontais (LARGURAS + padding) pra que os
-// links do menu fiquem alinhados com o conteúdo abaixo deles.
+// O deslocamento do menu lateral fica no AppShell; aqui é só o miolo.
 
 export const LARGURAS = {
   wide: 'max-w-6xl',
@@ -20,6 +19,8 @@ interface PageShellProps {
 
 export default function PageShell({ children, width = 'wide', className }: PageShellProps) {
   return (
-    <main className={cn(SHELL_X, LARGURAS[width], 'space-y-6 py-8', className)}>{children}</main>
+    <main className={cn(SHELL_X, LARGURAS[width], 'space-y-6 py-8 lg:py-10', className)}>
+      {children}
+    </main>
   );
 }

@@ -164,7 +164,7 @@ export default function MetasPage() {
                 'shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors',
                 l.mes === mesSelecionado
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-accent',
+                  : 'border border-white/60 bg-white/60 text-muted-foreground backdrop-blur-md hover:bg-accent',
               )}
             >
               {l.curto}

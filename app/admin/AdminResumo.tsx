@@ -102,7 +102,7 @@ export default function AdminResumo() {
                   <Link
                     key={aluna.id}
                     href={`/admin/alunas/${aluna.id}`}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition"
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-white/60 bg-white/50 p-4 transition-colors hover:bg-accent"
                   >
                     <div className="flex-1">
                       <h4 className="font-semibold">{aluna.full_name}</h4>

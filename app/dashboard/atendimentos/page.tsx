@@ -87,9 +87,9 @@ export default function AtendimentosPage() {
         description="Conte todo mundo com quem você falou — mesmo quem não comprou. Isso é a base da sua taxa de conversão."
       />
 
-      <form onSubmit={salvar} className="space-y-6 rounded-lg border bg-card p-6 shadow-sm sm:p-10">
+      <form onSubmit={salvar} className="vidro space-y-6 rounded-2xl p-6 sm:p-10">
         {erro && (
-          <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+          <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             {erro}
           </div>
         )}
@@ -133,7 +133,7 @@ export default function AtendimentosPage() {
             Nenhum atendimento registrado ainda.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border bg-card">
+          <div className="vidro overflow-x-auto rounded-2xl">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">

@@ -631,7 +631,7 @@ export default function DashboardPage() {
                     vendas.map((venda) => (
                       <div
                         key={venda.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition"
+                        className="flex items-center justify-between gap-4 rounded-2xl border border-white/60 bg-white/50 p-4 transition-colors hover:bg-accent"
                       >
                         <div className="flex-1">
                           <h4 className="font-semibold">{venda.cliente_nome}</h4>
@@ -678,7 +678,7 @@ export default function DashboardPage() {
                 <label className="text-sm font-medium">Cliente</label>
 
                 {clienteId ? (
-                  <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/40 px-3 py-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{clienteNome}</p>
                       {clienteTelefone && (
@@ -705,7 +705,7 @@ export default function DashboardPage() {
                       onBlur={() => setTimeout(() => setMostrarSugestoes(false), 150)}
                     />
                     {mostrarSugestoes && sugestoesCliente.length > 0 && (
-                      <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border bg-popover shadow-md">
+                      <ul className="vidro-forte absolute z-10 mt-1 w-full overflow-hidden rounded-2xl">
                         {sugestoesCliente.map((cliente) => (
                           <li key={cliente.id}>
                             <button

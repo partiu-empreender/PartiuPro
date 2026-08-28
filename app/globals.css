@@ -4,48 +4,76 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.6%;
+    /* ---------------------------------------------------------------
+       Paleta Partiu: roxo e branco.
+       O fundo não é branco puro — é um branco puxado pro lavanda. Isso
+       importa porque o efeito de vidro só aparece quando existe alguma
+       cor por baixo pra ser borrada; sobre branco puro, o blur não tem
+       o que borrar e os cartões ficariam chapados.
+       --------------------------------------------------------------- */
+    --background: 265 45% 97%;
+    --foreground: 264 30% 12%;
+
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.6%;
+    --card-foreground: 264 30% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.6%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 9.0%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84.2% 60.2%;
+    --popover-foreground: 264 30% 12%;
+
+    --muted: 264 30% 95%;
+    --muted-foreground: 264 12% 45%;
+
+    /* accent é o que os `hover:bg-accent` do app inteiro usam. Antes era
+       quase preto, o que fazia o menu escurecer no hover. Agora é o
+       lavanda claro da marca. */
+    --accent: 263 60% 96%;
+    --accent-foreground: 263 55% 32%;
+
+    --secondary: 263 55% 95%;
+    --secondary-foreground: 263 55% 30%;
+
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
+
+    --border: 264 30% 90%;
+    --input: 264 30% 88%;
+
     --primary: 263 70% 50%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --primary-foreground: 0 0% 100%;
     --ring: 263 70% 50%;
-    --radius: 0.5rem;
+
+    /* Menu lateral: roxo profundo, o contraponto escuro do fundo claro. */
+    --sidebar: 263 45% 17%;
+    --sidebar-foreground: 264 45% 97%;
+    --sidebar-muted: 264 22% 70%;
+    --sidebar-accent: 263 75% 65%;
+
+    --radius: 1rem;
   }
 
   .dark {
-    --background: 0 0% 3.6%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 98%;
-    --accent-foreground: 0 0% 9.0%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --primary: 263 70% 50%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 217 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --ring: 263 70% 50%;
+    --background: 264 30% 8%;
+    --foreground: 264 40% 96%;
+    --card: 264 28% 12%;
+    --card-foreground: 264 40% 96%;
+    --popover: 264 28% 12%;
+    --popover-foreground: 264 40% 96%;
+    --muted: 264 20% 18%;
+    --muted-foreground: 264 15% 65%;
+    --accent: 263 35% 22%;
+    --accent-foreground: 264 40% 96%;
+    --secondary: 263 30% 20%;
+    --secondary-foreground: 264 40% 96%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 264 20% 22%;
+    --input: 264 20% 24%;
+    --primary: 263 70% 62%;
+    --primary-foreground: 264 30% 8%;
+    --ring: 263 70% 62%;
+    --sidebar: 264 35% 11%;
+    --sidebar-foreground: 264 45% 97%;
+    --sidebar-muted: 264 18% 62%;
+    --sidebar-accent: 263 75% 68%;
   }
 }
 
@@ -55,11 +83,11 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
   }
 
   code {
-    @apply rounded-lg bg-muted px-2 py-1 font-mono text-sm font-semibold;
+    @apply rounded-md bg-muted px-2 py-1 font-mono text-sm font-semibold;
   }
 
   h1 {
@@ -84,20 +112,24 @@
      Não redefinir .container aqui — duplicar a classe faz ela brigar com a
      do tailwind.config.ts e o resultado vira dependente da ordem do build. */
 
-  .card {
-    @apply rounded-lg border bg-card p-6 text-card-foreground shadow-sm;
+  /* Vidro fosco: branco translúcido + desfoque do que está atrás.
+     Usado nos cartões e superfícies de conteúdo. */
+  .vidro {
+    @apply border border-white/60 bg-white/70 shadow-soft backdrop-blur-xl;
   }
 
-  .button {
-    @apply inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring;
+  /* Vidro mais opaco, pra superfícies que flutuam sobre o conteúdo
+     (menus, diálogos) e precisam de leitura garantida. */
+  .vidro-forte {
+    @apply border border-white/70 bg-white/85 shadow-glass backdrop-blur-2xl;
   }
 
-  .input {
-    @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary;
+  /* Vidro escuro, pro menu lateral. */
+  .vidro-escuro {
+    @apply border-white/10 bg-sidebar/85 backdrop-blur-2xl;
   }
 }
 
-/* Smooth transitions */
 @layer utilities {
   .transition-base {
     @apply transition-colors duration-200;
@@ -105,5 +137,19 @@
 
   .smooth-scroll {
     scroll-behavior: smooth;
+  }
+}
+
+/* Navegador sem backdrop-filter (Firefox antigo, alguns webviews) deixaria
+   o conteúdo por cima de um fundo semitransparente e sem desfoque — ilegível.
+   Nesse caso, as superfícies viram opacas. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .vidro,
+  .vidro-forte {
+    background-color: hsl(var(--card));
+  }
+
+  .vidro-escuro {
+    background-color: hsl(var(--sidebar));
   }
 }

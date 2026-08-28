@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUserWithWorkspace, isCurrentUserAdmin } from '@/lib/supabase-server';
-import Navbar from '@/components/shared/Navbar';
+import AppShell from '@/components/shared/AppShell';
 import AdminResumo from './AdminResumo';
 
 export default async function AdminPage() {
@@ -13,14 +13,13 @@ export default async function AdminPage() {
   const nome = result?.userData?.full_name || result?.user?.email || 'Mentora';
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar
-        nome={nome}
-        email={result?.user?.email}
-        avatarUrl={result?.userData?.avatar_url}
-        isAdmin={isAdmin}
-      />
+    <AppShell
+      nome={nome}
+      email={result?.user?.email}
+      avatarUrl={result?.userData?.avatar_url}
+      isAdmin={isAdmin}
+    >
       <AdminResumo />
-    </div>
+    </AppShell>
   );
 }

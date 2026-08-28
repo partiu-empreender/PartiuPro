@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUserWithWorkspace, isCurrentUserAdmin } from '@/lib/supabase-server';
-import Navbar from '@/components/shared/Navbar';
+import AppShell from '@/components/shared/AppShell';
 import AlunaDetalhe from './AlunaDetalhe';
 
 export default async function AlunaDetalhePage({ params }: { params: { id: string } }) {
@@ -13,14 +13,13 @@ export default async function AlunaDetalhePage({ params }: { params: { id: strin
   const nome = result?.userData?.full_name || result?.user?.email || 'Mentora';
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar
-        nome={nome}
-        email={result?.user?.email}
-        avatarUrl={result?.userData?.avatar_url}
-        isAdmin={isAdmin}
-      />
+    <AppShell
+      nome={nome}
+      email={result?.user?.email}
+      avatarUrl={result?.userData?.avatar_url}
+      isAdmin={isAdmin}
+    >
       <AlunaDetalhe workspaceId={params.id} />
-    </div>
+    </AppShell>
   );
 }

@@ -9,13 +9,6 @@ const config: Config = {
     './app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
-    container: {
-      center: true,
-      padding: '2rem',
-      screens: {
-        '2xl': '1400px',
-      },
-    },
     extend: {
       colors: {
         border: 'hsl(var(--border))',
@@ -51,11 +44,31 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // Menu lateral: roxo profundo, o contraponto escuro do fundo claro.
+        sidebar: {
+          DEFAULT: 'hsl(var(--sidebar))',
+          foreground: 'hsl(var(--sidebar-foreground))',
+          muted: 'hsl(var(--sidebar-muted))',
+          accent: 'hsl(var(--sidebar-accent))',
+        },
       },
+      // Escala de arredondamento generosa. Como `rounded-lg` já é a classe mais
+      // usada no app, mexer na escala aqui arredonda tudo de uma vez, sem
+      // precisar caçar classe por classe em cada tela.
       borderRadius: {
+        sm: 'calc(var(--radius) - 0.5rem)',
+        md: 'calc(var(--radius) - 0.25rem)',
         lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        xl: 'calc(var(--radius) + 0.25rem)',
+        '2xl': 'calc(var(--radius) + 0.5rem)',
+        '3xl': 'calc(var(--radius) + 1rem)',
+      },
+      boxShadow: {
+        // Sombra roxa e difusa: dá profundidade ao vidro sem o cinza pesado
+        // da sombra padrão.
+        soft: '0 4px 24px -8px hsl(263 70% 40% / 0.12)',
+        glass: '0 8px 40px -12px hsl(263 70% 35% / 0.18)',
+        lift: '0 16px 48px -16px hsl(263 70% 35% / 0.28)',
       },
       keyframes: {
         'accordion-down': {
