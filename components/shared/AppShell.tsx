@@ -159,7 +159,9 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
           </div>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1">
+        {/* gap-2 dá espaço pros cantos invertidos do item ativo — com gap
+            menor eles avançariam demais sobre a linha vizinha. */}
+        <nav className="flex flex-1 flex-col gap-2">
           {links.map((link) => {
             const Icone = link.icon;
             const ativo = estaAtivo(pathname, link.href);
@@ -171,12 +173,30 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
                 aria-current={ativo ? 'page' : undefined}
                 title={link.label}
                 className={cn(
-                  'flex shrink-0 items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm font-medium transition-colors',
+                  'relative flex shrink-0 items-center gap-3 px-4 py-3 text-sm font-medium transition-colors',
                   ativo
-                    ? 'bg-background text-primary shadow-soft'
-                    : 'text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground',
+                    ? // Arredondado só à esquerda: à direita ele encosta reto na
+                      // borda do painel, e a virada pra fora fica por conta dos
+                      // cantos invertidos abaixo. Sem sombra — ele não flutua
+                      // sobre o painel, ele é o fundo da página entrando nele.
+                      'rounded-l-2xl bg-background text-primary'
+                    : // Os inativos ficam recuados e totalmente arredondados,
+                      // então o realce de hover não se confunde com a aba ativa.
+                      'mr-4 rounded-2xl text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground',
                 )}
               >
+                {ativo && (
+                  <>
+                    <span
+                      aria-hidden
+                      className="canto-pra-fora-cima pointer-events-none absolute bottom-full right-0 h-4 w-4"
+                    />
+                    <span
+                      aria-hidden
+                      className="canto-pra-fora-baixo pointer-events-none absolute top-full right-0 h-4 w-4"
+                    />
+                  </>
+                )}
                 <Icone className="h-[18px] w-[18px] shrink-0" />
                 <span className={cn('whitespace-nowrap', soAoAbrirInline)}>{link.label}</span>
               </Link>

@@ -175,6 +175,38 @@
     }
   }
 
+  /* ---------------------------------------------------------------
+     Cantos que viram PRA FORA, acima e abaixo do item ativo do menu.
+
+     Um border-radius comum curva pra DENTRO: sobra um cantinho escuro do
+     painel entre o item e a pagina, e o item parece um botao solto. Aqui a
+     curva precisa ser concava — o item tem que parecer recortado do painel,
+     continuo com a pagina que comeca na borda.
+
+     Um gradiente radial resolve com um elemento so, e sem tapar o vidro:
+     dentro do raio fica transparente (o painel aparece por baixo), fora fica
+     com a cor do fundo da pagina, a mesma do item. Um degrade solido nao
+     serviria, porque teria que imitar a translucidez do painel.
+
+     O centro do circulo fica no canto OPOSTO ao item — em cima pro canto de
+     baixo, embaixo pro de cima — e e isso que inverte a curva.
+     --------------------------------------------------------------- */
+  .canto-pra-fora-cima {
+    background-image: radial-gradient(
+      circle at top left,
+      transparent 15px,
+      hsl(var(--background)) 16px
+    );
+  }
+
+  .canto-pra-fora-baixo {
+    background-image: radial-gradient(
+      circle at bottom left,
+      transparent 15px,
+      hsl(var(--background)) 16px
+    );
+  }
+
   /* Vidro escuro, pro menu lateral. */
   .vidro-escuro {
     @apply border-white/10 bg-sidebar/85 backdrop-blur-2xl;
