@@ -16,8 +16,13 @@ export default function Fundo() {
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
       <div className="absolute inset-0 bg-background" />
 
-      {/* Roxo forte no canto superior esquerdo, atrás do menu. */}
-      <div className="absolute -left-32 -top-40 h-[32rem] w-[32rem] rounded-full bg-primary/25 blur-3xl" />
+      {/* Roxo no canto superior esquerdo, atrás do topo do menu.
+          Ficava mais abaixo e tingia a faixa de página logo à direita do menu
+          — bem na altura dos itens. Como o item ativo usa a cor do fundo pra
+          parecer continuação dele, esse tingimento fazia os dois destoarem.
+          Subindo o centro, a mancha continua dando o que desfocar no alto do
+          menu e sai da altura onde a continuidade importa. */}
+      <div className="absolute -left-40 -top-52 h-[30rem] w-[30rem] rounded-full bg-primary/20 blur-3xl" />
 
       {/* Lavanda difuso à direita, na altura dos cartões de indicador. */}
       <div className="absolute -right-24 top-24 h-[26rem] w-[26rem] rounded-full bg-violet-400/20 blur-3xl" />

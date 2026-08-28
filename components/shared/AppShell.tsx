@@ -132,7 +132,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
       <div className="flex h-full flex-col gap-5 overflow-y-auto overflow-x-hidden py-5 pl-4">
         <Link
           href="/dashboard"
-          className="flex h-9 shrink-0 items-center pr-4"
+          className="flex h-9 shrink-0 items-center justify-center pr-4"
           aria-label="Partiu PRO"
         >
           <span aria-hidden className="marca marca-clara whitespace-nowrap text-lg leading-none">
@@ -171,11 +171,9 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
                 aria-current={ativo ? 'page' : undefined}
                 title={link.label}
                 className={cn(
-                  // Canto reto só à direita: encostado na borda, o item ativo
-                  // le como uma aba ligada ao conteúdo, não como botão solto.
-                  'flex shrink-0 items-center gap-3 overflow-hidden rounded-l-2xl px-4 py-3 text-sm font-medium transition-colors',
+                  'flex shrink-0 items-center gap-3 overflow-hidden rounded-2xl px-4 py-3 text-sm font-medium transition-colors',
                   ativo
-                    ? 'bg-white text-primary shadow-soft'
+                    ? 'bg-background text-primary shadow-soft'
                     : 'text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground',
                 )}
               >
@@ -222,7 +220,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
           em si, então existia um vão morto de 16px na lateral: vindo da borda,
           a pessoa atravessava esse vão sem nada acontecer. */}
       <div className="group fixed inset-y-4 left-0 z-40 hidden w-24 transition-[width] duration-300 ease-out hover:w-[17rem] focus-within:w-[17rem] lg:block">
-        <aside className="vidro-escuro absolute inset-y-0 left-4 right-0 rounded-3xl border shadow-lift">
+        <aside className="vidro-escuro absolute inset-y-0 left-4 right-0 rounded-3xl border-y border-l shadow-lift">
           {menu(true)}
         </aside>
       </div>
