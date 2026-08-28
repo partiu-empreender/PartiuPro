@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,6 +76,7 @@ interface ResultadoImportacao {
 const formVazio = { name: '', phone: '', email: '', notes: '', date_of_birth: '' };
 
 export default function ClientesPage() {
+  const router = useRouter();
   const emCache = lerMemoria<{ clientes: Cliente[]; etiquetas: Etiqueta[] }>('clientes');
   const [clientes, setClientes] = useState<Cliente[]>(emCache?.clientes ?? []);
   const [etiquetas, setEtiquetas] = useState<Etiqueta[]>(emCache?.etiquetas ?? []);
@@ -536,7 +538,11 @@ export default function ClientesPage() {
               </thead>
               <tbody className="divide-y">
                 {clientesVisiveis.map((cliente) => (
-                  <tr key={cliente.id} className="transition-colors hover:bg-accent/60">
+                  <tr
+                    key={cliente.id}
+                    onClick={() => router.push(`/dashboard/clientes/${cliente.id}`)}
+                    className="cursor-pointer transition-colors hover:bg-accent/60"
+                  >
                     <td className="px-4 py-3">
                       <Link
                         href={`/dashboard/clientes/${cliente.id}`}
@@ -567,7 +573,16 @@ export default function ClientesPage() {
                       {brl(cliente.total_spent || 0)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => abrirEdicao(cliente)}>
+                      {/* Sem o stopPropagation o clique subiria pra linha e
+                          abriria a ficha em vez do formulário de edição. */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          abrirEdicao(cliente);
+                        }}
+                      >
                         Editar
                       </Button>
                     </td>
@@ -584,21 +599,33 @@ export default function ClientesPage() {
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {clientesVisiveis.map((cliente) => (
-              <Card key={cliente.id} className="transition-colors hover:bg-white/90">
+              <Card
+                key={cliente.id}
+                className="group relative transition-colors hover:bg-white/90"
+              >
+                {/* O cartão inteiro abre a ficha. O link cobre o cartão por
+                    baixo do conteúdo em vez de envolvê-lo, porque um <a> não
+                    pode conter um <button> — assim o "Editar" continua sendo
+                    um botão de verdade, e não um link disfarçado. */}
+                <Link
+                  href={`/dashboard/clientes/${cliente.id}`}
+                  aria-label={`Abrir a ficha de ${cliente.name}`}
+                  className="absolute inset-0 z-0 rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
                 <CardContent className="space-y-3 p-6">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <Link
-                        href={`/dashboard/clientes/${cliente.id}`}
-                        className="block truncate font-semibold hover:underline"
-                      >
-                        {cliente.name}
-                      </Link>
+                      <p className="truncate font-semibold group-hover:underline">{cliente.name}</p>
                       {cliente.phone && (
                         <p className="text-sm text-muted-foreground">{formatarTelefone(cliente.phone)}</p>
                       )}
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => abrirEdicao(cliente)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="relative z-10"
+                      onClick={() => abrirEdicao(cliente)}
+                    >
                       Editar
                     </Button>
                   </div>
@@ -690,9 +717,9 @@ export default function ClientesPage() {
                 vender melhor na próxima.
               </p>
             </div>
-            {etiquetas.length > 0 && (
-              <div className="space-y-2">
-                <Label>Etiquetas</Label>
+            <div className="space-y-2">
+              <Label>Etiquetas</Label>
+              {etiquetas.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {etiquetas.map((etiqueta) => (
                     <EtiquetaToggle
@@ -703,8 +730,23 @@ export default function ClientesPage() {
                     />
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                /* Antes o bloco inteiro sumia quando ainda não havia etiqueta
+                   nenhuma — e quem está cadastrando a primeira cliente nunca
+                   descobria que etiqueta existe. */
+                <p className="text-xs text-muted-foreground">
+                  Você ainda não criou etiquetas.{' '}
+                  <button
+                    type="button"
+                    onClick={() => setGerenciandoEtiquetas(true)}
+                    className="font-medium text-primary underline underline-offset-2"
+                  >
+                    Criar agora
+                  </button>{' '}
+                  — são elas que depois filtram a lista de quem chamar.
+                </p>
+              )}
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAberto(false)}>
                 Cancelar

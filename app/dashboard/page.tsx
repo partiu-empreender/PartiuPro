@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
+import { EtiquetaToggle, type Etiqueta } from '@/components/shared/EtiquetaBadge';
 import {
   ShoppingBag,
   Package,
@@ -130,6 +131,11 @@ export default function DashboardPage() {
   const [sugestoesCliente, setSugestoesCliente] = useState<ClienteSugestao[]>([]);
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [criandoCliente, setCriandoCliente] = useState(false);
+  // Etiquetas na hora do cadastro: se a aluna tiver que voltar em Clientes pra
+  // marcar "Cliente VIP" depois, ela não volta — e a etiqueta só serve se a
+  // base inteira estiver etiquetada na hora de filtrar.
+  const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
+  const [etiquetasDaNova, setEtiquetasDaNova] = useState<string[]>([]);
   const [itens, setItens] = useState<NovoItemForm[]>([itemVazio()]);
   const [salvando, setSalvando] = useState(false);
   const [formError, setFormError] = useState('');
@@ -189,12 +195,33 @@ export default function DashboardPage() {
     setClienteNome('');
     setClienteTelefone('');
     setClienteId(undefined);
+    setEtiquetasDaNova([]);
     setSugestoesCliente([]);
     setBuscandoCliente(false);
     setItens([itemVazio()]);
     setFormError('');
     setShowRegistroVendaModal(true);
   };
+
+  // As etiquetas só são buscadas quando o modal abre, e uma vez só: elas não
+  // aparecem em nenhum outro lugar do painel, então carregá-las junto com as
+  // métricas seria uma requisição à toa em toda visita ao dashboard.
+  useEffect(() => {
+    if (!showRegistroVendaModal || etiquetas.length > 0) return;
+    let ativo = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/etiquetas');
+        const result = await res.json();
+        if (ativo && res.ok) setEtiquetas(result.data || []);
+      } catch {
+        // Sem etiquetas a venda continua funcionando — o bloco some, só isso.
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [showRegistroVendaModal, etiquetas.length]);
 
   // Busca clientes já cadastradas enquanto ela digita o nome. É o que evita
   // duplicata: o caminho normal passa a ser reconhecer e escolher, em vez de
@@ -253,7 +280,11 @@ export default function DashboardPage() {
       const res = await fetch('/api/clientes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nome, phone: clienteTelefone.trim() || undefined }),
+        body: JSON.stringify({
+          name: nome,
+          phone: clienteTelefone.trim() || undefined,
+          tag_ids: etiquetasDaNova.length ? etiquetasDaNova : undefined,
+        }),
       });
       const result = await res.json();
 
@@ -274,6 +305,13 @@ export default function DashboardPage() {
     setClienteId(undefined);
     setClienteNome('');
     setClienteTelefone('');
+    setEtiquetasDaNova([]);
+  };
+
+  const alternarEtiquetaDaNova = (id: string) => {
+    setEtiquetasDaNova((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id],
+    );
   };
 
   const atualizarItem = (index: number, campo: keyof NovoItemForm, valor: string) => {
@@ -822,6 +860,23 @@ export default function DashboardPage() {
                             setClienteTelefone(aplicarMascaraTelefone(e.target.value))
                           }
                         />
+                        {etiquetas.length > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Etiquetas (opcional)
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {etiquetas.map((etiqueta) => (
+                                <EtiquetaToggle
+                                  key={etiqueta.id}
+                                  etiqueta={etiqueta}
+                                  ativa={etiquetasDaNova.includes(etiqueta.id)}
+                                  onClick={() => alternarEtiquetaDaNova(etiqueta.id)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <Button
                           type="button"
                           className="w-full"
