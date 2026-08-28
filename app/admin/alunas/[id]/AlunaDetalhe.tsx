@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, ShoppingBag, Package, DollarSign, CalendarDays, TrendingUp } from 'lucide-react';
 import PageShell from '@/components/shared/PageShell';
+import CartaoIndicador from '@/components/shared/CartaoIndicador';
 
 interface Metricas {
   vendas: number;
@@ -121,20 +122,15 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
-        {cards.map((c) => {
-          const Icon = c.icon;
-          return (
-            <Card key={c.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{c.title}</CardTitle>
-                <Icon className={`h-4 w-4 ${c.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{c.value}</div>
-              </CardContent>
-            </Card>
-          );
-        })}
+        {cards.map((c) => (
+          <CartaoIndicador
+            key={c.title}
+            titulo={c.title}
+            valor={c.value}
+            icone={c.icon}
+            cor={c.color}
+          />
+        ))}
       </div>
 
       <Card>

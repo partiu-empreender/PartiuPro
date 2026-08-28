@@ -11,7 +11,9 @@ import PricingCalculator from '@/components/PricingCalculator';
 import { calcularRelatorioMensal, type RelatorioMensal } from '@/lib/metrics';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
-import { formatarTelefone } from '@/lib/telefone';
+import CartaoIndicador from '@/components/shared/CartaoIndicador';
+import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
+import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import {
   ShoppingBag,
   Package,
@@ -23,6 +25,8 @@ import {
   Target,
   Lightbulb,
   Rocket,
+  UserPlus,
+  Check,
 } from 'lucide-react';
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -94,10 +98,15 @@ const itemEstaVazio = (item: NovoItemForm) =>
   !item.produto_nome.trim() && !item.preco_unitario.trim();
 
 export default function DashboardPage() {
-  const [vendas, setVendas] = useState<VendaDiaria[]>([]);
-  const [relatorio, setRelatorio] = useState<RelatorioMensal | null>(null);
-  const [catalogo, setCatalogo] = useState<ProdutoCatalogo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const emCache = lerMemoria<{
+    vendas: VendaDiaria[];
+    relatorio: RelatorioMensal | null;
+    catalogo: ProdutoCatalogo[];
+  }>('dashboard');
+  const [vendas, setVendas] = useState<VendaDiaria[]>(emCache?.vendas ?? []);
+  const [relatorio, setRelatorio] = useState<RelatorioMensal | null>(emCache?.relatorio ?? null);
+  const [catalogo, setCatalogo] = useState<ProdutoCatalogo[]>(emCache?.catalogo ?? []);
+  const [loading, setLoading] = useState(emCache === undefined);
   const [activeTab, setActiveTab] = useState('relatorio');
   const [showRegistroVendaModal, setShowRegistroVendaModal] = useState(false);
   // Só a primeira carga mostra "Carregando..." — as atualizações de 30 em 30s
@@ -107,12 +116,13 @@ export default function DashboardPage() {
   // Form de registro de venda
   const [clienteNome, setClienteNome] = useState('');
   const [clienteTelefone, setClienteTelefone] = useState('');
-  // Preenchido só quando ela escolhe uma cliente já cadastrada na lista de
-  // sugestões. Vazio significa "cliente nova" — o servidor decide então se
-  // cria ou reaproveita, pelo telefone.
+  // Toda venda fica ligada a uma cliente: ou ela escolhe uma já cadastrada,
+  // ou cadastra na hora. Sem isso o histórico da cliente nunca se forma, que
+  // é justamente o que o CRM existe pra montar.
   const [clienteId, setClienteId] = useState<string | undefined>(undefined);
   const [sugestoesCliente, setSugestoesCliente] = useState<ClienteSugestao[]>([]);
-  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
+  const [criandoCliente, setCriandoCliente] = useState(false);
   const [itens, setItens] = useState<NovoItemForm[]>([itemVazio()]);
   const [salvando, setSalvando] = useState(false);
   const [formError, setFormError] = useState('');
@@ -140,9 +150,18 @@ export default function DashboardPage() {
         (metasResult.data || []).find((m: { mes: number; meta_mensal: number }) => m.mes === mesAtual)
           ?.meta_mensal || 0;
 
-      setRelatorio(
-        calcularRelatorioMensal(result.vendas_mes || [], result.atendimentos_mes || 0, metaDoMes),
+      const relatorioDoMes = calcularRelatorioMensal(
+        result.vendas_mes || [],
+        result.atendimentos_mes || 0,
+        metaDoMes,
       );
+      setRelatorio(relatorioDoMes);
+
+      gravarMemoria('dashboard', {
+        vendas: result.vendas || [],
+        relatorio: relatorioDoMes,
+        catalogo: resProdutos.ok ? produtosResult.data || [] : [],
+      });
     } catch (error) {
       console.error('Erro ao carregar métricas:', error);
     } finally {
@@ -164,7 +183,7 @@ export default function DashboardPage() {
     setClienteTelefone('');
     setClienteId(undefined);
     setSugestoesCliente([]);
-    setMostrarSugestoes(false);
+    setBuscandoCliente(false);
     setItens([itemVazio()]);
     setFormError('');
     setShowRegistroVendaModal(true);
@@ -177,15 +196,22 @@ export default function DashboardPage() {
     const termo = clienteNome.trim();
     if (!showRegistroVendaModal || clienteId || termo.length < 2) {
       setSugestoesCliente([]);
+      setBuscandoCliente(false);
       return;
     }
+    // Marca "buscando" já na digitação, antes do debounce. Sem isso, a opção
+    // de cadastrar nova piscaria na tela no intervalo entre digitar e a busca
+    // responder — parecendo que a cliente não existe quando ela existe.
+    setBuscandoCliente(true);
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`/api/clientes?busca=${encodeURIComponent(termo)}`);
         const result = await res.json();
-        if (res.ok) setSugestoesCliente((result.data || []).slice(0, 5));
+        setSugestoesCliente(res.ok ? (result.data || []).slice(0, 5) : []);
       } catch {
         setSugestoesCliente([]);
+      } finally {
+        setBuscandoCliente(false);
       }
     }, 250);
     return () => clearTimeout(timer);
@@ -195,7 +221,39 @@ export default function DashboardPage() {
     setClienteId(cliente.id);
     setClienteNome(cliente.name);
     setClienteTelefone(cliente.phone ? formatarTelefone(cliente.phone) : '');
-    setMostrarSugestoes(false);
+    setFormError('');
+  };
+
+  // Cadastra a cliente antes da venda, em vez de deixar o servidor adivinhar
+  // pelo nome. Assim ela já sai daqui com id e a venda nasce vinculada.
+  const cadastrarClienteNova = async () => {
+    const nome = clienteNome.trim();
+    if (!nome) {
+      setFormError('Digite o nome da cliente.');
+      return;
+    }
+
+    setCriandoCliente(true);
+    setFormError('');
+    try {
+      const res = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nome, phone: clienteTelefone.trim() || undefined }),
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.data?.id) {
+        setFormError(result.error || 'Não foi possível cadastrar a cliente.');
+        return;
+      }
+
+      setClienteId(result.data.id);
+    } catch {
+      setFormError('Não foi possível cadastrar a cliente.');
+    } finally {
+      setCriandoCliente(false);
+    }
   };
 
   const limparClienteEscolhida = () => {
@@ -245,8 +303,8 @@ export default function DashboardPage() {
   const registrarVenda = async () => {
     setFormError('');
 
-    if (!clienteNome.trim()) {
-      setFormError('Informe o nome do cliente');
+    if (!clienteId) {
+      setFormError('Escolha uma cliente da sua base ou cadastre uma nova antes de registrar a venda.');
       return;
     }
 
@@ -281,6 +339,8 @@ export default function DashboardPage() {
       }
 
       setShowRegistroVendaModal(false);
+      // Recarrega e regrava o cache: sem isto, sair e voltar pro dashboard
+      // mostraria o faturamento de antes da venda.
       await carregarMetricas();
     } catch {
       setFormError('Erro ao registrar venda. Tente novamente.');
@@ -334,20 +394,15 @@ export default function DashboardPage() {
                       icon: Target,
                       color: 'text-pink-600',
                     },
-                  ].map((c) => {
-                    const Icon = c.icon;
-                    return (
-                      <Card key={c.title}>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <CardTitle className="text-sm font-medium">{c.title}</CardTitle>
-                          <Icon className={`h-4 w-4 ${c.color}`} />
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold">{c.value}</div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                  ].map((c) => (
+                    <CartaoIndicador
+                      key={c.title}
+                      titulo={c.title}
+                      valor={c.value}
+                      icone={c.icon}
+                      cor={c.color}
+                    />
+                  ))}
                 </div>
 
                 <Card>
@@ -674,82 +729,112 @@ export default function DashboardPage() {
                 </div>
               )}
 
+              {/* Cliente é obrigatória: ou escolhe uma da base, ou cadastra aqui
+                  mesmo. A lista aparece embutida, e não num menu que some ao
+                  clicar fora — a Tania vai fazer isso ao vivo na frente das
+                  alunas, então o caminho tem que estar à vista. */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Cliente</label>
+                <label className="text-sm font-medium">
+                  Cliente <span className="text-destructive">*</span>
+                </label>
 
                 {clienteId ? (
-                  <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/40 px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{clienteNome}</p>
-                      {clienteTelefone && (
-                        <p className="text-xs text-muted-foreground">{clienteTelefone}</p>
-                      )}
+                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
+                        <Check className="h-4 w-4" strokeWidth={3} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-emerald-900">
+                          {clienteNome}
+                        </p>
+                        {clienteTelefone && (
+                          <p className="truncate text-xs text-emerald-700">{clienteTelefone}</p>
+                        )}
+                      </div>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={limparClienteEscolhida}>
                       Trocar
                     </Button>
                   </div>
                 ) : (
-                  <div className="relative">
+                  <div className="space-y-3 rounded-2xl border border-primary/30 bg-primary/5 p-3">
                     <Input
-                      placeholder="Nome da cliente"
+                      placeholder="Digite o nome da cliente"
                       value={clienteNome}
                       autoComplete="off"
-                      onChange={(e) => {
-                        setClienteNome(e.target.value);
-                        setMostrarSugestoes(true);
-                      }}
-                      onFocus={() => setMostrarSugestoes(true)}
-                      // O clique numa sugestão dispara o blur antes do onClick;
-                      // o atraso dá tempo do clique ser processado.
-                      onBlur={() => setTimeout(() => setMostrarSugestoes(false), 150)}
+                      onChange={(e) => setClienteNome(e.target.value)}
                     />
-                    {mostrarSugestoes && sugestoesCliente.length > 0 && (
-                      <ul className="vidro-forte absolute z-10 mt-1 w-full overflow-hidden rounded-2xl">
+
+                    {sugestoesCliente.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="px-1 text-xs font-medium text-muted-foreground">
+                          Já na sua base — toque pra usar nesta venda:
+                        </p>
                         {sugestoesCliente.map((cliente) => (
-                          <li key={cliente.id}>
-                            <button
-                              type="button"
-                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                              onClick={() => escolherCliente(cliente)}
-                            >
-                              <span className="min-w-0 truncate">
-                                {cliente.name}
-                                {cliente.phone && (
-                                  <span className="ml-2 text-xs text-muted-foreground">
-                                    {formatarTelefone(cliente.phone)}
-                                  </span>
-                                )}
-                              </span>
-                              <span className="shrink-0 text-xs text-muted-foreground">
-                                {cliente.total_orders || 0} compra(s)
-                              </span>
-                            </button>
-                          </li>
+                          <button
+                            key={cliente.id}
+                            type="button"
+                            onClick={() => escolherCliente(cliente)}
+                            className="flex w-full items-center justify-between gap-2 rounded-xl border border-white/60 bg-white px-3 py-2.5 text-left text-sm transition-colors hover:border-primary hover:bg-accent"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{cliente.name}</span>
+                              {cliente.phone && (
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {formatarTelefone(cliente.phone)}
+                                </span>
+                              )}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {cliente.total_orders || 0} compra(s)
+                            </span>
+                          </button>
                         ))}
-                      </ul>
+                      </div>
+                    )}
+
+                    {clienteNome.trim().length >= 2 && !buscandoCliente && (
+                      <div className="space-y-2 rounded-xl border border-dashed border-primary/40 bg-white/60 p-3">
+                        <p className="text-xs text-muted-foreground">
+                          {sugestoesCliente.length > 0
+                            ? 'Não é nenhuma dessas? Cadastre uma nova:'
+                            : 'Nenhuma cliente com esse nome ainda.'}
+                        </p>
+                        <Input
+                          inputMode="tel"
+                          placeholder="(21) 99999-8888 — opcional"
+                          value={clienteTelefone}
+                          onChange={(e) =>
+                            setClienteTelefone(aplicarMascaraTelefone(e.target.value))
+                          }
+                        />
+                        <Button
+                          type="button"
+                          className="w-full"
+                          onClick={cadastrarClienteNova}
+                          disabled={criandoCliente}
+                        >
+                          <UserPlus className="mr-2 h-4 w-4" />
+                          {criandoCliente
+                            ? 'Cadastrando...'
+                            : 'Cadastrar "' + clienteNome.trim() + '"'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Com o telefone ela não vira duplicata na próxima compra.
+                        </p>
+                      </div>
+                    )}
+
+                    {clienteNome.trim().length < 2 && (
+                      <p className="px-1 text-xs text-muted-foreground">
+                        Toda venda fica ligada a uma cliente — é assim que o histórico de compras
+                        dela se forma.
+                      </p>
                     )}
                   </div>
                 )}
               </div>
-
-              {!clienteId && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    Telefone <span className="font-normal text-muted-foreground">(opcional)</span>
-                  </label>
-                  <Input
-                    inputMode="tel"
-                    placeholder="(21) 99999-8888"
-                    value={clienteTelefone}
-                    onChange={(e) => setClienteTelefone(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Com o telefone, a cliente entra na sua base automaticamente e não vira duplicata
-                    na próxima compra.
-                  </p>
-                </div>
-              )}
 
               {catalogo.length > 0 ? (
                 <div className="space-y-4">

@@ -23,9 +23,10 @@ import EtiquetaBadge, {
   type Etiqueta,
 } from '@/components/shared/EtiquetaBadge';
 import { ETIQUETAS_SUGERIDAS, NOME_DA_COR } from '@/lib/etiquetas';
-import { formatarTelefone } from '@/lib/telefone';
+import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import { lerCSV } from '@/lib/csv';
 import { cn } from '@/lib/utils';
+import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 
 interface Cliente {
   id: string;
@@ -52,9 +53,10 @@ interface ResultadoImportacao {
 const formVazio = { name: '', phone: '', email: '', notes: '', date_of_birth: '' };
 
 export default function ClientesPage() {
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
-  const [loading, setLoading] = useState(true);
+  const emCache = lerMemoria<{ clientes: Cliente[]; etiquetas: Etiqueta[] }>('clientes');
+  const [clientes, setClientes] = useState<Cliente[]>(emCache?.clientes ?? []);
+  const [etiquetas, setEtiquetas] = useState<Etiqueta[]>(emCache?.etiquetas ?? []);
+  const [loading, setLoading] = useState(emCache === undefined);
   const [busca, setBusca] = useState('');
   const [filtroEtiqueta, setFiltroEtiqueta] = useState<string | null>(null);
 
@@ -94,6 +96,15 @@ export default function ClientesPage() {
 
       if (resClientes.ok) setClientes(dadosClientes.data || []);
       if (resEtiquetas.ok) setEtiquetas(dadosEtiquetas.data || []);
+
+      // Só guarda a lista sem filtro: guardar o resultado de uma busca faria
+      // a tela reabrir mostrando o filtro anterior como se fosse tudo.
+      if (resClientes.ok && resEtiquetas.ok && !busca.trim() && !filtroEtiqueta) {
+        gravarMemoria('clientes', {
+          clientes: dadosClientes.data || [],
+          etiquetas: dadosEtiquetas.data || [],
+        });
+      }
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
     } finally {
@@ -272,11 +283,11 @@ export default function ClientesPage() {
               }}
             />
             <Button variant="outline" onClick={() => inputArquivo.current?.click()}>
-              <Upload className="mr-2 h-4 w-4" /> Importar
+              <Download className="mr-2 h-4 w-4" /> Importar
             </Button>
             <a href="/api/clientes/exportar">
               <Button variant="outline">
-                <Download className="mr-2 h-4 w-4" /> Exportar
+                <Upload className="mr-2 h-4 w-4" /> Exportar
               </Button>
             </a>
             <Button onClick={abrirNovo} className="flex items-center gap-2">
@@ -421,7 +432,9 @@ export default function ClientesPage() {
                   inputMode="tel"
                   placeholder="(21) 99999-8888"
                   value={form.phone}
-                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, phone: aplicarMascaraTelefone(e.target.value) }))
+                  }
                 />
               </div>
               <div className="space-y-2">

@@ -43,3 +43,30 @@ export function linkWhatsApp(telefone: string | null | undefined): string | null
   if (!digitos || digitos.length < 10) return null;
   return `https://wa.me/55${digitos}`;
 }
+
+/**
+ * Máscara progressiva, pra usar enquanto a pessoa digita:
+ * (21) 9999-8888 até 10 dígitos, (21) 99999-8888 a partir de 11.
+ *
+ * Formata o que já foi digitado sem esperar o número ficar completo, e para
+ * em 11 dígitos — digitar o 12º simplesmente não faz nada, em vez de
+ * desmontar a máscara.
+ *
+ * O que vai pro banco continua sendo `normalizarTelefone`, só dígitos: a
+ * máscara é aparência, não dado.
+ */
+export function aplicarMascaraTelefone(bruto: string | null | undefined): string {
+  const digitos = (normalizarTelefone(bruto) ?? '').slice(0, 11);
+
+  if (digitos.length === 0) return '';
+  if (digitos.length <= 2) return `(${digitos}`;
+
+  const ddd = digitos.slice(0, 2);
+  const resto = digitos.slice(2);
+
+  // Celular (9 dígitos) quebra em 5+4; fixo (8) quebra em 4+4.
+  const tamanhoDoPrefixo = resto.length > 8 ? 5 : 4;
+
+  if (resto.length <= tamanhoDoPrefixo) return `(${ddd}) ${resto}`;
+  return `(${ddd}) ${resto.slice(0, tamanhoDoPrefixo)}-${resto.slice(tamanhoDoPrefixo)}`;
+}

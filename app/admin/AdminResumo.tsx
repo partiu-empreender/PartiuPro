@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
+import CartaoIndicador from '@/components/shared/CartaoIndicador';
+import { DollarSign, TrendingUp, Users } from 'lucide-react';
 
 interface AlunaResumo {
   id: string;
@@ -56,30 +58,19 @@ export default function AdminResumo() {
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Alunas cadastradas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{alunas.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Alunas ativas (com venda nos 30 dias)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{alunasAtivas}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Faturamento consolidado</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">R$ {faturamentoTotal.toFixed(2)}</div>
-          </CardContent>
-        </Card>
+        <CartaoIndicador titulo="Alunas cadastradas" valor={String(alunas.length)} icone={Users} />
+        <CartaoIndicador
+          titulo="Alunas ativas (com venda nos 30 dias)"
+          valor={String(alunasAtivas)}
+          icone={TrendingUp}
+          cor="text-emerald-600"
+        />
+        <CartaoIndicador
+          titulo="Faturamento consolidado"
+          valor={`R$ ${faturamentoTotal.toFixed(2)}`}
+          icone={DollarSign}
+          cor="text-blue-600"
+        />
       </div>
 
       <Card>
