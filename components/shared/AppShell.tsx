@@ -153,13 +153,6 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
           <User className="h-[18px] w-[18px] shrink-0" />
           Perfil
         </Link>
-        <Link
-          href="/dashboard/privacidade"
-          className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
-        >
-          <ShieldCheck className="h-[18px] w-[18px] shrink-0" />
-          Privacidade
-        </Link>
         <button
           type="button"
           onClick={sair}
