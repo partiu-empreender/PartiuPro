@@ -181,7 +181,7 @@ export default function MetasPage() {
       ) : (
         <>
           <Card>
-            <CardContent className="space-y-5 p-6 sm:p-8">
+            <CardContent className="space-y-5 p-7 sm:p-8">
               <h2 className="text-3xl font-black uppercase">{atual.nome} {ano}</h2>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
@@ -217,7 +217,7 @@ export default function MetasPage() {
             <CardHeader>
               <CardTitle>Comparativo anual {ano}</CardTitle>
             </CardHeader>
-            <CardContent className="overflow-x-auto p-0 sm:px-6 sm:pb-6">
+            <CardContent className="overflow-x-auto p-0 sm:px-7 sm:pb-7">
               <table className="w-full min-w-[540px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">

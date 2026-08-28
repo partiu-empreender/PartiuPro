@@ -19,7 +19,7 @@ interface PageShellProps {
 
 export default function PageShell({ children, width = 'wide', className }: PageShellProps) {
   return (
-    <main className={cn(SHELL_X, LARGURAS[width], 'space-y-6 py-8 lg:py-10', className)}>
+    <main className={cn(SHELL_X, LARGURAS[width], 'space-y-6 py-10 lg:py-12', className)}>
       {children}
     </main>
   );

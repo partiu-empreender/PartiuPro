@@ -1,14 +1,14 @@
 import type { Metadata } from 'next';
-import { Cinzel, Inter } from 'next/font/google';
+import { Inter, Oswald } from 'next/font/google';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
-// Fonte da marca: serifada romana, desenhada pra caixa alta — por isso ela
-// aguenta o "PARTIU PRO" todo em maiúsculas sem ficar pesada.
-const cinzel = Cinzel({
+// Fonte da marca: condensada, de hastes retas e verticais. Em caixa alta ela
+// fica alta e estreita, que é o desenho de logotipo que a Tania pediu.
+const oswald = Oswald({
   subsets: ['latin'],
-  weight: ['600', '700'],
+  weight: ['500', '600'],
   variable: '--fonte-marca',
   display: 'swap',
 });
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={cinzel.variable}>
+    <html lang="pt-BR" className={oswald.variable}>
       <body className={inter.className}>{children}</body>
     </html>
   );

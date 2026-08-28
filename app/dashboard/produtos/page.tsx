@@ -142,7 +142,7 @@ export default function ProdutosPage() {
     const margem = p.price > 0 ? (lucro / p.price) * 100 : 0;
     return (
       <Card key={p.id}>
-        <CardContent className="space-y-4 p-6">
+        <CardContent className="space-y-4 p-7">
           <h3 className="truncate text-lg font-bold">{p.name}</h3>
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between border-b pb-2">
@@ -224,7 +224,7 @@ export default function ProdutosPage() {
         <p className="text-center py-8 text-muted-foreground">Carregando...</p>
       ) : produtos.length === 0 ? (
         <Card className="mx-auto max-w-md">
-          <CardContent className="space-y-4 p-8 text-center">
+          <CardContent className="space-y-5 px-8 py-10 text-center">
             <p className="text-sm text-muted-foreground">
               Você ainda não cadastrou nada. Cadastre suas cestas pra calcular margem e agilizar o registro
               de vendas — e depois os adicionais, pra medir quanto eles trazem de faturamento.

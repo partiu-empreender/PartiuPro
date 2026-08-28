@@ -1,9 +1,22 @@
 import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+/**
+ * Junta classes RESOLVENDO conflito entre elas.
+ *
+ * Antes era só clsx, e isso escondia um bug de verdade: como o Tailwind emite
+ * `pt-0` depois de `p-8` no CSS, o `pt-0` da base do CardContent vencia o
+ * `p-8` que o card pedia — e todo cartão com padding próprio ficava com o
+ * conteúdo colado no topo. Nenhuma classe estava errada; ganhava a que vinha
+ * por último no arquivo.
+ *
+ * Com o twMerge, a última classe PASSADA vence, que é o que quem escreve o
+ * componente espera.
+ */
 export function cn(...inputs: ClassValue[]) {
-  return clsx(inputs);
+  return twMerge(clsx(inputs));
 }
 
 export function formatCurrency(value: number, currency: string = 'BRL'): string {

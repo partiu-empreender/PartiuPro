@@ -339,7 +339,7 @@ export default function ClientesPage() {
         <p className="py-8 text-center text-muted-foreground">Carregando...</p>
       ) : clientes.length === 0 ? (
         <Card className="mx-auto max-w-md">
-          <CardContent className="space-y-4 p-8 text-center">
+          <CardContent className="space-y-5 px-8 py-10 text-center">
             <Users className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
               {busca || filtroEtiqueta
@@ -361,7 +361,7 @@ export default function ClientesPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {clientes.map((cliente) => (
               <Card key={cliente.id} className="transition-colors hover:bg-white/90">
-                <CardContent className="space-y-3 p-5">
+                <CardContent className="space-y-3 p-6">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <Link

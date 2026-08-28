@@ -11,7 +11,7 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        marca: ['var(--fonte-marca)', 'Georgia', 'Times New Roman', 'serif'],
+        marca: ['var(--fonte-marca)', 'Arial Narrow', 'Helvetica', 'sans-serif'],
       },
       colors: {
         border: 'hsl(var(--border))',

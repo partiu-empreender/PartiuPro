@@ -28,7 +28,7 @@ export default function CartaoIndicador({
   cor = 'text-primary',
 }: CartaoIndicadorProps) {
   return (
-    <Card className="flex flex-col items-center justify-center gap-2.5 p-5 text-center">
+    <Card className="flex flex-col items-center justify-center gap-2.5 px-5 py-7 text-center">
       <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10">
         <Icone className={cn('h-5 w-5', cor)} />
       </span>

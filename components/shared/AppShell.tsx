@@ -215,10 +215,17 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
 
       {/* No computador: recolhido, abrindo no hover. Ele cresce POR CIMA do
           conteúdo em vez de empurrá-lo — se empurrasse, a página inteira
-          pularia toda vez que o mouse passasse perto. */}
-      <aside className="vidro-escuro group fixed inset-y-4 left-4 z-40 hidden w-20 rounded-3xl border shadow-lift transition-[width] duration-300 ease-out hover:w-64 focus-within:w-64 lg:block">
-        {menu(true)}
-      </aside>
+          pularia toda vez que o mouse passasse perto.
+
+          Quem detecta o mouse é esta faixa invisível, que começa na borda da
+          tela; o painel fica recuado dentro dela. Antes o gatilho era o painel
+          em si, então existia um vão morto de 16px na lateral: vindo da borda,
+          a pessoa atravessava esse vão sem nada acontecer. */}
+      <div className="group fixed inset-y-4 left-0 z-40 hidden w-24 transition-[width] duration-300 ease-out hover:w-[17rem] focus-within:w-[17rem] lg:block">
+        <aside className="vidro-escuro absolute inset-y-0 left-4 right-0 rounded-3xl border shadow-lift">
+          {menu(true)}
+        </aside>
+      </div>
 
       {/* No celular vira gaveta. */}
       <div

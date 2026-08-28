@@ -129,19 +129,19 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Card>
-          <CardContent className="p-5">
+          <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Compras</p>
             <p className="text-2xl font-bold">{cliente.total_orders || 0}</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5">
+          <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Total gasto</p>
             <p className="text-2xl font-bold">{brl(cliente.total_spent || 0)}</p>
           </CardContent>
         </Card>
         <Card className="col-span-2 sm:col-span-1">
-          <CardContent className="p-5">
+          <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Última compra</p>
             <p className="text-2xl font-bold">
               {cliente.last_order_at
