@@ -50,6 +50,13 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
   const router = useRouter();
   const [menuAberto, setMenuAberto] = useState(false);
 
+  // O usePathname() só muda quando a navegação TERMINA. Até lá o realce ficava
+  // parado no item antigo, e o menu parecia correr atrás da página em vez de
+  // já estar definido. Aqui o clique diz pra onde vai, e o realce se move na
+  // hora; quando a rota chega de verdade, o palpite deixa de ser necessário.
+  const [destinoDoClique, setDestinoDoClique] = useState<string | null>(null);
+  const rotaAtual = destinoDoClique ?? pathname;
+
   // Roda no corpo do componente de propósito: o AppShell renderiza antes das
   // telas, então o cache de outra conta é descartado antes de qualquer tela
   // conseguir lê-lo. Num efeito seria tarde demais.
@@ -63,6 +70,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
   // tela nova com o menu ainda por cima dela.
   useEffect(() => {
     setMenuAberto(false);
+    setDestinoDoClique(null);
   }, [pathname]);
 
   // Esc fecha, e a página atrás não rola enquanto a gaveta está aberta.
@@ -164,7 +172,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
         <nav className="flex flex-1 flex-col gap-2">
           {links.map((link) => {
             const Icone = link.icon;
-            const ativo = estaAtivo(pathname, link.href);
+            const ativo = estaAtivo(rotaAtual, link.href);
 
             return (
               <Link
@@ -172,17 +180,23 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
                 href={link.href}
                 aria-current={ativo ? 'page' : undefined}
                 title={link.label}
+                onClick={() => setDestinoDoClique(link.href)}
                 className={cn(
-                  'relative flex shrink-0 items-center gap-3 px-4 py-3 text-sm font-medium transition-colors',
+                  'relative flex shrink-0 items-center gap-3 px-4 py-3 text-sm font-medium',
                   ativo
                     ? // Arredondado só à esquerda: à direita ele encosta reto na
                       // borda do painel, e a virada pra fora fica por conta dos
                       // cantos invertidos abaixo. Sem sombra — ele não flutua
                       // sobre o painel, ele é o fundo da página entrando nele.
+                      //
+                      // Sem transição aqui, de propósito: os cantos são pintados
+                      // com gradiente, que não acompanha transition-colors. Com
+                      // transição, o fundo entrava em fade e os cantos apareciam
+                      // de uma vez — a aba se montava em dois tempos.
                       'rounded-l-2xl bg-background text-primary'
                     : // Os inativos ficam recuados e totalmente arredondados,
                       // então o realce de hover não se confunde com a aba ativa.
-                      'mr-4 rounded-2xl text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground',
+                      'mr-4 rounded-2xl text-sidebar-muted transition-colors hover:bg-white/10 hover:text-sidebar-foreground',
                 )}
               >
                 {ativo && (
