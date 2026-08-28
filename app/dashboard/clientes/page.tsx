@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Download, Plus, Search, Tag, Upload, Users } from 'lucide-react';
+import { Download, HelpCircle, Plus, Search, Tag, Upload, Users } from 'lucide-react';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
 import EtiquetaBadge, {
@@ -76,6 +76,7 @@ export default function ClientesPage() {
   const [novaEtiqueta, setNovaEtiqueta] = useState('');
   const [novaCor, setNovaCor] = useState<CorEtiqueta>('slate');
   const [criandoEtiquetas, setCriandoEtiquetas] = useState(false);
+  const [mostrandoAjudaCSV, setMostrandoAjudaCSV] = useState(false);
 
   const jaCarregou = useRef(false);
 
@@ -151,6 +152,13 @@ export default function ClientesPage() {
 
     if (!form.name.trim()) {
       setErro('Informe o nome da cliente.');
+      return;
+    }
+
+    // O telefone é a chave que impede a mesma cliente de entrar duas vezes na
+    // base, e é por ele que a venda reencontra quem já está cadastrada.
+    if (!form.phone.trim()) {
+      setErro('Informe o telefone da cliente.');
       return;
     }
 
@@ -285,6 +293,15 @@ export default function ClientesPage() {
             <Button variant="outline" onClick={() => inputArquivo.current?.click()}>
               <Download className="mr-2 h-4 w-4" /> Importar
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Como preparar a planilha"
+              title="Como preparar a planilha"
+              onClick={() => setMostrandoAjudaCSV(true)}
+            >
+              <HelpCircle className="h-4 w-4" />
+            </Button>
             <a href="/api/clientes/exportar">
               <Button variant="outline">
                 <Upload className="mr-2 h-4 w-4" /> Exportar
@@ -417,7 +434,9 @@ export default function ClientesPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="cliente-nome">Nome</Label>
+              <Label htmlFor="cliente-nome">
+                Nome <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="cliente-nome"
                 value={form.name}
@@ -426,7 +445,9 @@ export default function ClientesPage() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="cliente-telefone">Telefone</Label>
+                <Label htmlFor="cliente-telefone">
+                Telefone <span className="text-destructive">*</span>
+              </Label>
                 <Input
                   id="cliente-telefone"
                   inputMode="tel"
@@ -453,12 +474,13 @@ export default function ClientesPage() {
                 id="cliente-contexto"
                 rows={3}
                 className="flex w-full rounded-xl border border-input bg-white/70 px-4 py-2 text-sm backdrop-blur-md transition-colors placeholder:text-muted-foreground focus-visible:border-primary focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-                placeholder="Comprou cesta de maternidade. O pai faleceu em maio."
+                placeholder="Prefere receber à tarde. Comprou cesta de café da manhã pro aniversário da mãe."
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               />
               <p className="text-xs text-muted-foreground">
-                O que você quer lembrar na próxima conversa.
+                Preferências de entrega, o que ela já comprou, datas que importam — o que ajuda a
+                vender melhor na próxima.
               </p>
             </div>
             {etiquetas.length > 0 && (
@@ -671,6 +693,100 @@ export default function ClientesPage() {
           )}
           <DialogFooter>
             <Button onClick={() => setResultadoImport(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Como preparar a planilha. A Tania vai ensinar isso ao vivo, entao a
+          instrucao mora dentro do produto e nao num documento a parte. */}
+      <Dialog open={mostrandoAjudaCSV} onOpenChange={setMostrandoAjudaCSV}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Como preparar a planilha</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 text-sm">
+            <div className="space-y-2">
+              <p className="font-semibold">1. Salve como CSV</p>
+              <p className="text-muted-foreground">
+                No Excel: <strong>Arquivo → Salvar como → CSV</strong>. No Google Sheets:{' '}
+                <strong>Arquivo → Fazer download → CSV</strong>. Vírgula ou ponto e vírgula, tanto
+                faz — o sistema descobre sozinho.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-semibold">2. Use estes nomes de coluna</p>
+              <p className="text-muted-foreground">
+                A ordem não importa, e maiúscula e acento também não. Só o <strong>nome</strong> é
+                obrigatório.
+              </p>
+              <div className="overflow-hidden rounded-xl border">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/60 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Coluna</th>
+                      <th className="px-3 py-2 font-semibold">Também aceita</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {[
+                      ['nome *', 'cliente, nome completo, name'],
+                      ['telefone', 'celular, whatsapp, fone, tel, contato, número'],
+                      ['email', 'mail'],
+                      ['aniversário', 'nascimento, data de nascimento'],
+                      ['etiquetas', 'etiqueta, tags, marcadores, categoria'],
+                      ['contexto', 'observações, obs, notas, anotações, histórico'],
+                    ].map(([coluna, sinonimos]) => (
+                      <tr key={coluna}>
+                        <td className="px-3 py-2 font-medium">{coluna}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{sinonimos}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Coluna que o sistema não reconhecer não é descartada em silêncio: ela aparece
+                avisada na tela de conferência, antes de gravar.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-semibold">3. Como preencher</p>
+              <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">
+                <li>
+                  <strong>Aniversário:</strong> 25/12/1990 ou 1990-12-25.
+                </li>
+                <li>
+                  <strong>Telefone:</strong> pode vir formatado, com ou sem DDD e +55. O sistema
+                  guarda só os números.
+                </li>
+                <li>
+                  <strong>Mais de uma etiqueta na mesma célula:</strong> separe por ponto e vírgula
+                  — <em>Cliente VIP; Dia das Mães</em>. Etiqueta que ainda não existe é criada.
+                </li>
+                <li>Linha sem nome é pulada e reportada com o número dela, o resto entra normal.</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-semibold">4. O que acontece com quem já está aqui</p>
+              <p className="text-muted-foreground">
+                Quem já existe é encontrada pelo <strong>telefone</strong> e{' '}
+                <strong>atualizada, não duplicada</strong> — e só os campos vazios são preenchidos.
+                O que você escreveu à mão nunca é sobrescrito, então reimportar a mesma planilha é
+                seguro.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+              <p className="text-xs">
+                Na dúvida, clique em <strong>Exportar</strong>: o arquivo que sai já está no formato
+                exato que a importação espera. Dá pra usar como modelo.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setMostrandoAjudaCSV(false)}>Entendi</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

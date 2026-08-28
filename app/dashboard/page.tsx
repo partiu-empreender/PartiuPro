@@ -12,6 +12,13 @@ import { calcularRelatorioMensal, type RelatorioMensal } from '@/lib/metrics';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
 import CartaoIndicador from '@/components/shared/CartaoIndicador';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import {
@@ -230,6 +237,13 @@ export default function DashboardPage() {
     const nome = clienteNome.trim();
     if (!nome) {
       setFormError('Digite o nome da cliente.');
+      return;
+    }
+
+    // O telefone e a chave que impede a mesma cliente de entrar duas vezes na
+    // base — e o caminho pro WhatsApp. Sem ele o cadastro nasce manco.
+    if (!clienteTelefone.trim()) {
+      setFormError('Informe o telefone da cliente.');
       return;
     }
 
@@ -715,14 +729,13 @@ export default function DashboardPage() {
         </Tabs>
       </PageShell>
 
-      {showRegistroVendaModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <CardTitle>Registrar Venda</CardTitle>
-              <CardDescription>Adicione o cliente e os itens vendidos</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+      <Dialog open={showRegistroVendaModal} onOpenChange={setShowRegistroVendaModal}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Registrar Venda</DialogTitle>
+            <DialogDescription>Adicione o cliente e os itens vendidos</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
               {formError && (
                 <div className="p-3 bg-destructive/10 border border-destructive text-destructive rounded-lg text-sm">
                   {formError}
@@ -803,7 +816,7 @@ export default function DashboardPage() {
                         </p>
                         <Input
                           inputMode="tel"
-                          placeholder="(21) 99999-8888 — opcional"
+                          placeholder="(21) 99999-8888"
                           value={clienteTelefone}
                           onChange={(e) =>
                             setClienteTelefone(aplicarMascaraTelefone(e.target.value))
@@ -821,7 +834,8 @@ export default function DashboardPage() {
                             : 'Cadastrar "' + clienteNome.trim() + '"'}
                         </Button>
                         <p className="text-xs text-muted-foreground">
-                          Com o telefone ela não vira duplicata na próxima compra.
+                          O telefone é o que impede a mesma cliente de entrar duas vezes na base — e
+                          é por ele que você abre a conversa no WhatsApp depois.
                         </p>
                       </div>
                     )}
@@ -942,10 +956,9 @@ export default function DashboardPage() {
                   {salvando ? 'Salvando...' : 'Registrar'}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

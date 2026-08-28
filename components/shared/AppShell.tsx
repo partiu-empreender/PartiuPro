@@ -149,22 +149,31 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
           </span>
         </Link>
 
-        {/* Identidade. Recolhido: só a miniatura. Aberto: foto grande, nome e e-mail. */}
-        <div
-          className={cn(
-            'mr-4 flex shrink-0 flex-col items-center justify-center gap-3 rounded-2xl bg-white/10 text-center transition-all duration-300',
-            estreito ? 'p-2 group-hover:p-4 group-focus-within:p-4' : 'p-4',
-          )}
-        >
-          {avatar(
-            estreito
-              ? 'h-10 w-10 text-sm transition-all duration-300 group-hover:h-16 group-hover:w-16 group-hover:text-xl group-focus-within:h-16 group-focus-within:w-16 group-focus-within:text-xl'
-              : 'h-16 w-16 text-xl',
-          )}
-          <div className={cn('min-w-0 max-w-full', soAoAbrir)}>
-            <p className="truncate text-sm font-semibold text-sidebar-foreground">{nome}</p>
-            {email && <p className="truncate text-xs text-sidebar-muted">{email}</p>}
-          </div>
+        {/* Identidade. Recolhido: só a miniatura. Aberto: foto grande, nome e e-mail.
+
+            A ALTURA E FIXA de propósito. Recolhido o bloco media ~56px e aberto
+            ~144, e essa diferença empurrava todos os itens pra baixo quando o
+            menu abria — a pessoa mirava num item e ele fugia. Agora o espaço é
+            sempre o mesmo; só o conteúdo dentro dele muda. */}
+        <div className="flex h-36 shrink-0 items-center justify-center pr-4">
+          <Link
+            href="/dashboard/perfil"
+            title="Abrir meu perfil"
+            className={cn(
+              'flex w-full flex-col items-center justify-center gap-3 rounded-2xl bg-white/10 text-center transition-all duration-300 hover:bg-white/20',
+              estreito ? 'p-1 group-hover:p-4 group-focus-within:p-4' : 'p-4',
+            )}
+          >
+            {avatar(
+              estreito
+                ? 'h-10 w-10 text-sm transition-all duration-300 group-hover:h-16 group-hover:w-16 group-hover:text-xl group-focus-within:h-16 group-focus-within:w-16 group-focus-within:text-xl'
+                : 'h-16 w-16 text-xl',
+            )}
+            <div className={cn('min-w-0 max-w-full', soAoAbrir)}>
+              <p className="truncate text-sm font-semibold text-sidebar-foreground">{nome}</p>
+              {email && <p className="truncate text-xs text-sidebar-muted">{email}</p>}
+            </div>
+          </Link>
         </div>
 
         {/* gap-2 dá espaço pros cantos invertidos do item ativo — com gap
@@ -182,7 +191,9 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
                 title={link.label}
                 onClick={() => setDestinoDoClique(link.href)}
                 className={cn(
-                  'relative flex shrink-0 items-center gap-3 px-4 py-3 text-sm font-medium',
+                  // h-11 fixo: sem o rótulo a linha teria 42px e com ele 44px,
+                  // e esses 2px por item somavam uma dezena no menu inteiro.
+                  'relative flex h-11 shrink-0 items-center gap-3 px-4 text-sm font-medium',
                   ativo
                     ? // Arredondado só à esquerda: à direita ele encosta reto na
                       // borda do painel, e a virada pra fora fica por conta dos
@@ -222,7 +233,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
           <Link
             href="/dashboard/perfil"
             title="Perfil"
-            className="flex items-center gap-3 overflow-hidden rounded-xl px-4 py-2.5 text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
+            className="flex h-10 items-center gap-3 overflow-hidden rounded-xl px-4 text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
           >
             <User className="h-[18px] w-[18px] shrink-0" />
             <span className={cn('whitespace-nowrap', soAoAbrirInline)}>Perfil</span>
@@ -231,7 +242,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
             type="button"
             onClick={sair}
             title="Sair"
-            className="flex items-center gap-3 overflow-hidden rounded-xl px-4 py-2.5 text-left text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
+            className="flex h-10 items-center gap-3 overflow-hidden rounded-xl px-4 text-left text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/10 hover:text-sidebar-foreground"
           >
             <LogOut className="h-[18px] w-[18px] shrink-0" />
             <span className={cn('whitespace-nowrap', soAoAbrirInline)}>Sair</span>
