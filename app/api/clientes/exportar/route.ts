@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
-import { gerarCSV } from '@/lib/csv';
+import { CABECALHOS_CLIENTES, gerarCSV } from '@/lib/csv';
 import { formatarTelefone } from '@/lib/telefone';
 import { extrairEtiquetas } from '@/lib/crm';
 import { hojeBrasil } from '@/lib/datas';
-
-// Mesmos cabeçalhos que o importador reconhece: o que sai daqui pode voltar
-// pra cá sem edição nenhuma. É também o formato do modelo de planilha.
-export const CABECALHOS = ['nome', 'telefone', 'email', 'aniversario', 'etiquetas', 'contexto'];
 
 export async function GET() {
   try {
@@ -52,7 +48,7 @@ export async function GET() {
       String(cliente.notes ?? ''),
     ]);
 
-    const csv = gerarCSV(CABECALHOS, linhas);
+    const csv = gerarCSV(CABECALHOS_CLIENTES, linhas);
 
     return new NextResponse(csv, {
       headers: {

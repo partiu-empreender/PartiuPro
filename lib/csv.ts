@@ -165,9 +165,25 @@ function escapar(valor: string | null | undefined): string {
   return /[",\n;]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 
-export function gerarCSV(cabecalhos: string[], linhas: (string | null | undefined)[][]): string {
-  const corpo = [cabecalhos, ...linhas].map((linha) => linha.map(escapar).join(',')).join('\r\n');
-  // BOM no início para o Excel abrir acentuação corretamente.
+/**
+ * Gera o arquivo que a aluna abre no Excel ou no Google Sheets.
+ *
+ * Separador PONTO E VÍRGULA de propósito. O Excel usa o separador de listas do
+ * Windows, e no Brasil ele é `;` — com vírgula, o arquivo abre com tudo
+ * empilhado na coluna A, que é justamente onde ela vai abrir. O Google Sheets
+ * detecta sozinho, então não perde nada. E a leitura aqui aceita os dois.
+ *
+ * O BOM no início faz o Excel abrir a acentuação certa; sem ele, "aniversário"
+ * vira "aniversÃ¡rio". Na volta, `lerCSV` remove.
+ */
+export function gerarCSV(
+  cabecalhos: string[],
+  linhas: (string | null | undefined)[][],
+  separador: ',' | ';' = ';',
+): string {
+  const corpo = [cabecalhos, ...linhas]
+    .map((linha) => linha.map(escapar).join(separador))
+    .join('\r\n');
   return `\uFEFF${corpo}`;
 }
 
@@ -198,3 +214,42 @@ export function lerEtiquetas(texto: string | undefined): string[] {
     .map((t) => t.trim())
     .filter(Boolean);
 }
+
+// Cabeçalhos do arquivo de clientes. São os mesmos que o importador reconhece,
+// então o que sai da exportação volta sem edição nenhuma — e o modelo em
+// branco nasce igual ao arquivo real.
+//
+// Ficam aqui, e não na rota de exportar, porque a tela precisa deles pra
+// montar o modelo no navegador — e importar um route.ts pro cliente traria
+// código de servidor junto.
+export const CABECALHOS_CLIENTES = [
+  'nome',
+  'telefone',
+  'email',
+  'aniversario',
+  'etiquetas',
+  'contexto',
+];
+
+/**
+ * Linhas de exemplo do modelo.
+ *
+ * Elas ensinam o formato — data em DD/MM/AAAA, etiquetas separadas por ponto
+ * e virgula, coluna vazia quando nao ha o dado. Mas exemplo dentro do arquivo
+ * vira cliente de mentira na base se ninguem apagar, entao o nome anuncia o
+ * que a linha e. Se escapar, aparece assim mesmo na tela de conferencia, que
+ * e obrigatoria antes de gravar.
+ *
+ * A segunda linha existe pra mostrar que so nome e telefone ja bastam.
+ */
+export const LINHAS_EXEMPLO_CLIENTES: string[][] = [
+  [
+    'EXEMPLO 1 - apague esta linha',
+    '(21) 99999-8888',
+    'maria@email.com',
+    '25/12/1990',
+    'Cliente VIP; Dia das Mães',
+    'Prefere receber à tarde. Comprou cesta de café da manhã.',
+  ],
+  ['EXEMPLO 2 - apague esta linha', '(11) 3333-4444', '', '', '', ''],
+];

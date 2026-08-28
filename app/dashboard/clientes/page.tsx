@@ -24,7 +24,7 @@ import EtiquetaBadge, {
 } from '@/components/shared/EtiquetaBadge';
 import { ETIQUETAS_SUGERIDAS, NOME_DA_COR } from '@/lib/etiquetas';
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
-import { lerCSV } from '@/lib/csv';
+import { CABECALHOS_CLIENTES, LINHAS_EXEMPLO_CLIENTES, gerarCSV, lerCSV } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 
@@ -179,6 +179,25 @@ export default function ClientesPage() {
     } finally {
       setSalvando(false);
     }
+  };
+
+  // Monta o modelo aqui no navegador em vez de pedir ao servidor: e o mesmo
+  // conteudo sempre, entao uma ida ate la seria so espera. E funciona igual
+  // com a internet oscilando, que e o cenario da aula.
+  const baixarModelo = () => {
+    const csv = gerarCSV(CABECALHOS_CLIENTES, LINHAS_EXEMPLO_CLIENTES);
+    const endereco = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+
+    const link = document.createElement('a');
+    link.href = endereco;
+    link.download = 'modelo-clientes-partiu-pro.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    // Alguns navegadores ainda estao lendo o Blob quando o clique retorna;
+    // liberar na hora cancelaria o download.
+    setTimeout(() => URL.revokeObjectURL(endereco), 1000);
   };
 
   const criarEtiqueta = async (nome: string, cor: CorEtiqueta) => {
@@ -364,9 +383,14 @@ export default function ClientesPage() {
                 : 'Sua base de clientes é o seu maior ativo. Cadastre a primeira — ou registre uma venda com o nome e o telefone, que ela entra aqui sozinha.'}
             </p>
             {!busca && !filtroEtiqueta && (
-              <Button onClick={abrirNovo} className="w-full">
-                <Plus className="mr-2 h-4 w-4" /> Cadastrar minha primeira cliente
-              </Button>
+              <div className="space-y-2">
+                <Button onClick={abrirNovo} className="w-full">
+                  <Plus className="mr-2 h-4 w-4" /> Cadastrar minha primeira cliente
+                </Button>
+                <Button variant="outline" className="w-full" onClick={() => setMostrandoAjudaCSV(true)}>
+                  <Download className="mr-2 h-4 w-4" /> Já tenho uma lista pra importar
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -704,6 +728,18 @@ export default function ClientesPage() {
             <DialogTitle>Como preparar a planilha</DialogTitle>
           </DialogHeader>
           <div className="space-y-5 text-sm">
+            <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-4">
+              <p className="font-semibold">Comece pelo modelo</p>
+              <p className="text-muted-foreground">
+                Baixe o arquivo pronto, abra no Excel ou no Google Sheets, preencha e importe de
+                volta. Ele já vem com as colunas certas e duas linhas de exemplo —{' '}
+                <strong>apague as duas antes de importar</strong>, senão elas entram como clientes.
+              </p>
+              <Button onClick={baixarModelo} className="w-full sm:w-auto">
+                <Download className="mr-2 h-4 w-4" /> Baixar modelo (.csv)
+              </Button>
+            </div>
+
             <div className="space-y-2">
               <p className="font-semibold">1. Salve como CSV</p>
               <p className="text-muted-foreground">
@@ -778,12 +814,11 @@ export default function ClientesPage() {
               </p>
             </div>
 
-            <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-              <p className="text-xs">
-                Na dúvida, clique em <strong>Exportar</strong>: o arquivo que sai já está no formato
-                exato que a importação espera. Dá pra usar como modelo.
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              <strong>Exportar</strong> gera um arquivo no mesmo formato, mas com as suas clientes
+              de verdade — serve pra fazer backup ou editar tudo de uma vez na planilha e trazer de
+              volta.
+            </p>
           </div>
           <DialogFooter>
             <Button onClick={() => setMostrandoAjudaCSV(false)}>Entendi</Button>
