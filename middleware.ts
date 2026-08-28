@@ -20,20 +20,17 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  // Refresh auth session
-  await supabase.auth.getSession();
+  // Uma leitura só: ela já renova a sessão e responde se existe. Antes eram
+  // duas chamadas por requisição, e o middleware roda em toda navegação.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  // Protected routes
   const protectedRoutes = ['/dashboard', '/admin'];
-
   const pathname = request.nextUrl.pathname;
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
 
   if (isProtectedRoute) {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
     if (!session) {
       // Redirect to login if not authenticated
       const loginUrl = new URL('/login', request.url);

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import PageShell from '@/components/shared/PageShell';
+import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import PageHeader from '@/components/shared/PageHeader';
 import { hojeBrasil } from '@/lib/datas';
 
@@ -24,9 +25,14 @@ function fmtData(iso: string) {
 }
 
 export default function AtendimentosPage() {
-  const [atendimentos, setAtendimentos] = useState<Atendimento[]>([]);
-  const [vendasPorDia, setVendasPorDia] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
+  const emCache = lerMemoria<{ atendimentos: Atendimento[]; vendasPorDia: Record<string, number> }>(
+    'atendimentos',
+  );
+  const [atendimentos, setAtendimentos] = useState<Atendimento[]>(emCache?.atendimentos ?? []);
+  const [vendasPorDia, setVendasPorDia] = useState<Record<string, number>>(
+    emCache?.vendasPorDia ?? {},
+  );
+  const [loading, setLoading] = useState(emCache === undefined);
   const [data, setData] = useState(hoje());
   const [pessoas, setPessoas] = useState('');
   const [erro, setErro] = useState('');
@@ -34,12 +40,15 @@ export default function AtendimentosPage() {
 
   const carregar = async () => {
     try {
-      setLoading(true);
       const res = await fetch('/api/atendimentos');
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Erro ao carregar atendimentos');
       setAtendimentos(result.data || []);
       setVendasPorDia(result.vendasPorDia || {});
+      gravarMemoria('atendimentos', {
+        atendimentos: result.data || [],
+        vendasPorDia: result.vendasPorDia || {},
+      });
     } catch (error) {
       console.error('Erro ao carregar atendimentos:', error);
     } finally {

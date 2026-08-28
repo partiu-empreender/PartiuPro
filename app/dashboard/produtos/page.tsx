@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import PageShell from '@/components/shared/PageShell';
+import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import PageHeader from '@/components/shared/PageHeader';
 
 type TipoProduto = 'produto' | 'adicional';
@@ -43,8 +44,11 @@ const ROTULOS: Record<TipoProduto, { singular: string; plural: string; ajuda: st
 };
 
 export default function ProdutosPage() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Volta pintando o que já foi carregado nesta sessão e revalida em
+  // silêncio, em vez de mostrar "Carregando..." de novo a cada visita.
+  const emCache = lerMemoria<Produto[]>('produtos');
+  const [produtos, setProdutos] = useState<Produto[]>(emCache ?? []);
+  const [loading, setLoading] = useState(emCache === undefined);
   const [aberto, setAberto] = useState(false);
   const [editando, setEditando] = useState<Produto | null>(null);
   const [form, setForm] = useState<{ name: string; price: string; cost: string; tipo: TipoProduto }>({
@@ -58,11 +62,11 @@ export default function ProdutosPage() {
 
   const carregar = async () => {
     try {
-      setLoading(true);
       const res = await fetch('/api/produtos');
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Erro ao carregar produtos');
       setProdutos(result.data || []);
+      gravarMemoria('produtos', result.data || []);
     } catch (error) {
       console.error('Erro ao carregar produtos:', error);
     } finally {
