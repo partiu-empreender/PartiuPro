@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Search, Tag, Users } from 'lucide-react';
+import { Download, Plus, Search, Tag, Upload, Users } from 'lucide-react';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
 import EtiquetaBadge, {
@@ -23,6 +23,7 @@ import EtiquetaBadge, {
   type Etiqueta,
 } from '@/components/shared/EtiquetaBadge';
 import { formatarTelefone } from '@/lib/telefone';
+import { lerCSV } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 
 interface Cliente {
@@ -50,6 +51,14 @@ const SUGESTOES: { nome: string; cor: CorEtiqueta }[] = [
   { nome: 'Prospecção', cor: 'slate' },
 ];
 
+interface ResultadoImportacao {
+  criadas: number;
+  atualizadas: number;
+  ignoradas: { linha: number; nome: string; motivo: string }[];
+  colunasIgnoradas: string[];
+  etiquetasCriadas: string[];
+}
+
 const formVazio = { name: '', phone: '', email: '', notes: '', date_of_birth: '' };
 
 export default function ClientesPage() {
@@ -65,6 +74,11 @@ export default function ClientesPage() {
   const [etiquetasDoForm, setEtiquetasDoForm] = useState<string[]>([]);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
+
+  const [importando, setImportando] = useState(false);
+  const [previa, setPrevia] = useState<{ csv: string; nomes: string[]; ignoradas: string[] } | null>(null);
+  const [resultadoImport, setResultadoImport] = useState<ResultadoImportacao | null>(null);
+  const inputArquivo = useRef<HTMLInputElement>(null);
 
   const [gerenciandoEtiquetas, setGerenciandoEtiquetas] = useState(false);
   const [novaEtiqueta, setNovaEtiqueta] = useState('');
@@ -179,6 +193,50 @@ export default function ClientesPage() {
       atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id],
     );
 
+  // Lê o arquivo no navegador e mostra o que será importado ANTES de gravar.
+  // A Tania vai fazer isso ao vivo na frente das alunas: importar às cegas e
+  // descobrir o erro depois seria o pior momento possível.
+  const escolherArquivo = async (arquivo: File) => {
+    const texto = await arquivo.text();
+    const { linhas, colunasIgnoradas, temColunaNome } = lerCSV(texto);
+
+    if (!temColunaNome) {
+      setResultadoImport(null);
+      setPrevia({ csv: '', nomes: [], ignoradas: ['A planilha precisa ter uma coluna de nome.'] });
+      return;
+    }
+
+    setResultadoImport(null);
+    setPrevia({
+      csv: texto,
+      nomes: linhas.map((l) => l.nome || '').filter(Boolean),
+      ignoradas: colunasIgnoradas,
+    });
+  };
+
+  const confirmarImportacao = async () => {
+    if (!previa?.csv) return;
+    setImportando(true);
+    try {
+      const res = await fetch('/api/clientes/importar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csv: previa.csv }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Erro ao importar');
+      setResultadoImport(result.data);
+      setPrevia(null);
+      await carregar();
+    } catch (error) {
+      setPrevia((p) =>
+        p ? { ...p, ignoradas: [error instanceof Error ? error.message : 'Erro ao importar'] } : p,
+      );
+    } finally {
+      setImportando(false);
+    }
+  };
+
   const sugestoesRestantes = SUGESTOES.filter(
     (s) => !etiquetas.some((e) => e.nome.toLowerCase() === s.nome.toLowerCase()),
   );
@@ -189,9 +247,32 @@ export default function ClientesPage() {
         title="Minhas clientes"
         description="Sua base de contatos — quem comprou, o quê, e quando falar de novo."
         action={
-          <Button onClick={abrirNovo} className="flex items-center gap-2">
-            <Plus className="h-4 w-4" /> Nova cliente
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={inputArquivo}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const arquivo = e.target.files?.[0];
+                if (arquivo) escolherArquivo(arquivo);
+                // Zera pra permitir escolher o MESMO arquivo de novo depois de
+                // corrigi-lo — senao o onChange nao dispara na segunda vez.
+                e.target.value = '';
+              }}
+            />
+            <Button variant="outline" onClick={() => inputArquivo.current?.click()}>
+              <Upload className="mr-2 h-4 w-4" /> Importar
+            </Button>
+            <a href="/api/clientes/exportar">
+              <Button variant="outline">
+                <Download className="mr-2 h-4 w-4" /> Exportar
+              </Button>
+            </a>
+            <Button onClick={abrirNovo} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" /> Nova cliente
+            </Button>
+          </div>
         }
       />
 
@@ -455,6 +536,105 @@ export default function ClientesPage() {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* Prévia antes de gravar */}
+      <Dialog open={previa !== null} onOpenChange={(aberto) => !aberto && setPrevia(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Conferir antes de importar</DialogTitle>
+          </DialogHeader>
+          {previa && previa.nomes.length === 0 ? (
+            <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+              {previa.ignoradas[0] || 'Não encontrei nenhuma cliente nessa planilha.'}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm">
+                <strong>{previa?.nomes.length}</strong> cliente(s) encontrada(s) na planilha.
+              </p>
+              {previa && previa.ignoradas.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  Estas colunas não foram reconhecidas e serão ignoradas:{' '}
+                  <strong>{previa.ignoradas.join(', ')}</strong>. O resto será importado normalmente.
+                </div>
+              )}
+              <div className="max-h-48 overflow-y-auto rounded-md border">
+                <ul className="divide-y text-sm">
+                  {previa?.nomes.slice(0, 50).map((nome, i) => (
+                    <li key={i} className="px-3 py-1.5">{nome}</li>
+                  ))}
+                </ul>
+              </div>
+              {previa && previa.nomes.length > 50 && (
+                <p className="text-xs text-muted-foreground">
+                  Mostrando as 50 primeiras — todas serão importadas.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Quem já estiver na sua base (mesmo telefone) será atualizada, não duplicada. Campos
+                que você já preencheu à mão não são sobrescritos.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPrevia(null)}>
+              Cancelar
+            </Button>
+            {previa && previa.nomes.length > 0 && (
+              <Button onClick={confirmarImportacao} disabled={importando}>
+                {importando ? 'Importando...' : `Importar ${previa.nomes.length}`}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resultado */}
+      <Dialog
+        open={resultadoImport !== null}
+        onOpenChange={(aberto) => !aberto && setResultadoImport(null)}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Importação concluída</DialogTitle>
+          </DialogHeader>
+          {resultadoImport && (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-muted-foreground">Novas</p>
+                  <p className="text-2xl font-bold">{resultadoImport.criadas}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-muted-foreground">Atualizadas</p>
+                  <p className="text-2xl font-bold">{resultadoImport.atualizadas}</p>
+                </div>
+              </div>
+              {resultadoImport.etiquetasCriadas.length > 0 && (
+                <p className="text-muted-foreground">
+                  Etiquetas criadas: {resultadoImport.etiquetasCriadas.join(', ')}
+                </p>
+              )}
+              {resultadoImport.ignoradas.length > 0 && (
+                <div className="space-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                  <p className="font-medium">
+                    {resultadoImport.ignoradas.length} linha(s) não entraram:
+                  </p>
+                  <ul className="list-inside list-disc">
+                    {resultadoImport.ignoradas.map((item, i) => (
+                      <li key={i}>
+                        Linha {item.linha} ({item.nome || 'sem nome'}): {item.motivo}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setResultadoImport(null)}>Fechar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageShell>
