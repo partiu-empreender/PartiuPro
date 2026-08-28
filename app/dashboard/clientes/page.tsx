@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Download, HelpCircle, Plus, Search, Tag, Upload, Users } from 'lucide-react';
+import { Download, HelpCircle, LayoutGrid, List, Plus, Search, Tag, Upload, Users } from 'lucide-react';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
 import EtiquetaBadge, {
@@ -27,6 +27,14 @@ import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import { CABECALHOS_CLIENTES, LINHAS_EXEMPLO_CLIENTES, gerarCSV, lerCSV } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
+import {
+  ORDENS,
+  SITUACOES,
+  ordenarClientes,
+  passaNaSituacao,
+  type OrdemCliente,
+  type SituacaoCliente,
+} from '@/lib/filtros-clientes';
 
 interface Cliente {
   id: string;
@@ -41,6 +49,20 @@ interface Cliente {
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// "há 3 meses" diz mais do que uma data pra decidir quem chamar hoje — que é
+// pra isso que a Tania vai olhar esta coluna.
+function desdeAUltimaCompra(iso: string | null | undefined): string {
+  if (!iso) return 'Nunca comprou';
+
+  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (dias <= 0) return 'Hoje';
+  if (dias === 1) return 'Ontem';
+  if (dias < 30) return `Há ${dias} dias`;
+
+  const meses = Math.floor(dias / 30);
+  return meses === 1 ? 'Há 1 mês' : `Há ${meses} meses`;
+}
 
 interface ResultadoImportacao {
   criadas: number;
@@ -77,6 +99,20 @@ export default function ClientesPage() {
   const [novaCor, setNovaCor] = useState<CorEtiqueta>('slate');
   const [criandoEtiquetas, setCriandoEtiquetas] = useState(false);
   const [mostrandoAjudaCSV, setMostrandoAjudaCSV] = useState(false);
+
+  // Situação e ordem são aplicadas aqui no navegador; busca e etiqueta
+  // continuam no banco. A visão escolhida sobrevive à navegação porque fica no
+  // mesmo cache de sessão das telas — trocar de aba e voltar não a reseta.
+  const [situacao, setSituacao] = useState<SituacaoCliente>('todas');
+  const [ordem, setOrdem] = useState<OrdemCliente>('nome');
+  const [visao, setVisao] = useState<'cartoes' | 'lista'>(
+    () => lerMemoria<'cartoes' | 'lista'>('visao-clientes') ?? 'cartoes',
+  );
+
+  const trocarVisao = (nova: 'cartoes' | 'lista') => {
+    setVisao(nova);
+    gravarMemoria('visao-clientes', nova);
+  };
 
   const jaCarregou = useRef(false);
 
@@ -285,6 +321,11 @@ export default function ClientesPage() {
     }
   };
 
+  const clientesVisiveis = ordenarClientes(
+    clientes.filter((cliente) => passaNaSituacao(cliente, situacao)),
+    ordem,
+  );
+
   const sugestoesRestantes = ETIQUETAS_SUGERIDAS.filter(
     (s) => !etiquetas.some((e) => e.nome.toLowerCase() === s.nome.toLowerCase()),
   );
@@ -369,6 +410,73 @@ export default function ClientesPage() {
             <Tag className="mr-2 h-3 w-3" /> Etiquetas
           </Button>
         </div>
+
+        {/* Filtros de situação. Cada um veio de algo que a Tania descreveu na
+            reunião contando como funcionava o sistema da Reserva: "você tem 10
+            contatos de aniversário, 20 contatos de clientes que não compram há
+            seis meses". A ideia é a lista virar a lista de quem ligar hoje. */}
+        <div className="flex flex-wrap items-center gap-2">
+          {SITUACOES.map((s) => (
+            <button
+              key={s.valor}
+              type="button"
+              title={s.ajuda}
+              aria-pressed={situacao === s.valor}
+              onClick={() => setSituacao(s.valor)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                situacao === s.valor
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-input bg-white/60 text-muted-foreground backdrop-blur-md hover:bg-accent',
+              )}
+            >
+              {s.rotulo}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Ordenar por
+            <select
+              value={ordem}
+              onChange={(e) => setOrdem(e.target.value as OrdemCliente)}
+              className="h-9 rounded-xl border border-input bg-white/70 px-3 text-xs text-foreground backdrop-blur-md focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/30"
+            >
+              {ORDENS.map((o) => (
+                <option key={o.valor} value={o.valor}>
+                  {o.rotulo}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex items-center gap-1 rounded-full border border-input bg-white/60 p-1 backdrop-blur-md">
+            {(
+              [
+                { valor: 'cartoes' as const, Icone: LayoutGrid, rotulo: 'Cartões' },
+                { valor: 'lista' as const, Icone: List, rotulo: 'Lista' },
+              ]
+            ).map(({ valor, Icone, rotulo }) => (
+              <button
+                key={valor}
+                type="button"
+                aria-pressed={visao === valor}
+                title={rotulo}
+                onClick={() => trocarVisao(valor)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                  visao === valor
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-accent',
+                )}
+              >
+                <Icone className="h-3.5 w-3.5" />
+                {rotulo}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -394,13 +502,88 @@ export default function ClientesPage() {
             )}
           </CardContent>
         </Card>
+      ) : clientesVisiveis.length === 0 ? (
+        <Card className="mx-auto max-w-md">
+          <CardContent className="space-y-4 px-8 py-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              Nenhuma cliente nesta situação agora. Isso é uma boa notícia, dependendo do filtro.
+            </p>
+            <Button variant="outline" onClick={() => setSituacao('todas')}>
+              Ver todas as clientes
+            </Button>
+          </CardContent>
+        </Card>
+      ) : visao === 'lista' ? (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            {clientesVisiveis.length} cliente{clientesVisiveis.length > 1 ? 's' : ''}
+          </p>
+          {/* A tabela rola na horizontal no celular em vez de espremer as
+              colunas — nome e telefone, que é o que ela usa pra ligar, ficam
+              nas duas primeiras e sempre à vista. */}
+          <div className="vidro overflow-x-auto rounded-2xl">
+            <table className="w-full min-w-[46rem] text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-3 font-semibold">Cliente</th>
+                  <th className="px-4 py-3 font-semibold">Telefone</th>
+                  <th className="px-4 py-3 font-semibold">Etiquetas</th>
+                  <th className="px-4 py-3 font-semibold">Última compra</th>
+                  <th className="px-4 py-3 text-right font-semibold">Compras</th>
+                  <th className="px-4 py-3 text-right font-semibold">Total gasto</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {clientesVisiveis.map((cliente) => (
+                  <tr key={cliente.id} className="transition-colors hover:bg-accent/60">
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/dashboard/clientes/${cliente.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {cliente.name}
+                      </Link>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                      {cliente.phone ? formatarTelefone(cliente.phone) : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {cliente.etiquetas.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {cliente.etiquetas.map((etiqueta) => (
+                            <EtiquetaBadge key={etiqueta.id} etiqueta={etiqueta} />
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                      {desdeAUltimaCompra(cliente.last_order_at)}
+                    </td>
+                    <td className="px-4 py-3 text-right">{cliente.total_orders || 0}</td>
+                    <td className="px-4 py-3 text-right font-semibold">
+                      {brl(cliente.total_spent || 0)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => abrirEdicao(cliente)}>
+                        Editar
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">
-            {clientes.length} cliente{clientes.length > 1 ? 's' : ''}
+            {clientesVisiveis.length} cliente{clientesVisiveis.length > 1 ? 's' : ''}
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {clientes.map((cliente) => (
+            {clientesVisiveis.map((cliente) => (
               <Card key={cliente.id} className="transition-colors hover:bg-white/90">
                 <CardContent className="space-y-3 p-6">
                   <div className="flex items-start justify-between gap-2">
