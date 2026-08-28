@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
-import { CORES_ETIQUETA, type CorEtiqueta } from '../route';
+import { ehCorValida, type CorEtiqueta } from '@/lib/etiquetas';
 
 interface AtualizarEtiquetaRequest {
   nome?: string;
@@ -22,7 +22,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const body: AtualizarEtiquetaRequest = await request.json();
     const patch: Record<string, unknown> = {};
     if (body.nome !== undefined && body.nome.trim()) patch.nome = body.nome.trim();
-    if (body.cor !== undefined && CORES_ETIQUETA.includes(body.cor)) patch.cor = body.cor;
+    if (body.cor !== undefined && ehCorValida(body.cor)) patch.cor = body.cor;
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
+import { COR_PADRAO } from '@/lib/etiquetas';
 import { normalizarTelefone } from '@/lib/telefone';
 import { lerCSV, lerData, lerEtiquetas } from '@/lib/csv';
 
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
           if (!tagId) {
             const { data: nova } = await supabase
               .from('customer_tags')
-              .insert({ workspace_id: user.id, nome: nomeEtiqueta, cor: 'slate' })
+              .insert({ workspace_id: user.id, nome: nomeEtiqueta, cor: COR_PADRAO })
               .select('id')
               .single();
             const novoId: string | undefined = nova?.id;

@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
+import { COR_PADRAO, ehCorValida, type CorEtiqueta } from '@/lib/etiquetas';
 
-// Paleta fechada: a cor vira classe do Tailwind na tela, e classe montada em
-// tempo de execução some no build (o Tailwind varre o código-fonte, não o
-// banco). Aceitar cor livre daria etiqueta invisível.
-export const CORES_ETIQUETA = [
-  'slate',
-  'rose',
-  'amber',
-  'emerald',
-  'sky',
-  'violet',
-] as const;
-export type CorEtiqueta = (typeof CORES_ETIQUETA)[number];
 
 interface CriarEtiquetaRequest {
   nome: string;
@@ -73,9 +62,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Informe o nome da etiqueta' }, { status: 400 });
     }
 
-    const cor: CorEtiqueta = CORES_ETIQUETA.includes(body.cor as CorEtiqueta)
-      ? (body.cor as CorEtiqueta)
-      : 'slate';
+    const cor: CorEtiqueta = ehCorValida(body.cor) ? body.cor : COR_PADRAO;
 
     const { data: etiqueta, error } = await supabase
       .from('customer_tags')

@@ -22,6 +22,7 @@ import EtiquetaBadge, {
   type CorEtiqueta,
   type Etiqueta,
 } from '@/components/shared/EtiquetaBadge';
+import { ETIQUETAS_SUGERIDAS, NOME_DA_COR } from '@/lib/etiquetas';
 import { formatarTelefone } from '@/lib/telefone';
 import { lerCSV } from '@/lib/csv';
 import { cn } from '@/lib/utils';
@@ -39,17 +40,6 @@ interface Cliente {
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-// Sugestões pra tela não abrir vazia na primeira vez. A Tania vai mandar a
-// lista definitiva dela; estas são só um ponto de partida, e ela pode apagar.
-const SUGESTOES: { nome: string; cor: CorEtiqueta }[] = [
-  { nome: 'VIP', cor: 'amber' },
-  { nome: 'Aniversário', cor: 'rose' },
-  { nome: 'Natal', cor: 'emerald' },
-  { nome: 'Dia das Mães', cor: 'violet' },
-  { nome: 'Corporativo', cor: 'sky' },
-  { nome: 'Prospecção', cor: 'slate' },
-];
 
 interface ResultadoImportacao {
   criadas: number;
@@ -83,6 +73,7 @@ export default function ClientesPage() {
   const [gerenciandoEtiquetas, setGerenciandoEtiquetas] = useState(false);
   const [novaEtiqueta, setNovaEtiqueta] = useState('');
   const [novaCor, setNovaCor] = useState<CorEtiqueta>('slate');
+  const [criandoEtiquetas, setCriandoEtiquetas] = useState(false);
 
   const jaCarregou = useRef(false);
 
@@ -182,6 +173,25 @@ export default function ClientesPage() {
     await carregar();
   };
 
+  // Adicionar as dez sugestões uma a uma seria dez cliques e dez recargas.
+  // Aqui vai tudo em série e a lista recarrega uma vez só, no fim.
+  const criarTodasAsSugestoes = async () => {
+    if (criandoEtiquetas) return;
+    setCriandoEtiquetas(true);
+    try {
+      for (const sugestao of sugestoesRestantes) {
+        await fetch('/api/etiquetas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sugestao),
+        });
+      }
+      await carregar();
+    } finally {
+      setCriandoEtiquetas(false);
+    }
+  };
+
   const removerEtiqueta = async (id: string) => {
     await fetch(`/api/etiquetas/${id}`, { method: 'DELETE' });
     if (filtroEtiqueta === id) setFiltroEtiqueta(null);
@@ -237,7 +247,7 @@ export default function ClientesPage() {
     }
   };
 
-  const sugestoesRestantes = SUGESTOES.filter(
+  const sugestoesRestantes = ETIQUETAS_SUGERIDAS.filter(
     (s) => !etiquetas.some((e) => e.nome.toLowerCase() === s.nome.toLowerCase()),
   );
 
@@ -295,7 +305,7 @@ export default function ClientesPage() {
               'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
               filtroEtiqueta === null
                 ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-input bg-background text-muted-foreground hover:bg-accent',
+                : 'border-input bg-white/60 text-muted-foreground backdrop-blur-md hover:bg-accent',
             )}
           >
             Todas
@@ -339,7 +349,7 @@ export default function ClientesPage() {
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {clientes.map((cliente) => (
-              <Card key={cliente.id} className="transition-colors hover:bg-muted/40">
+              <Card key={cliente.id} className="transition-colors hover:bg-white/90">
                 <CardContent className="space-y-3 p-5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -429,7 +439,7 @@ export default function ClientesPage() {
               <textarea
                 id="cliente-contexto"
                 rows={3}
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex w-full rounded-xl border border-input bg-white/70 px-4 py-2 text-sm backdrop-blur-md transition-colors placeholder:text-muted-foreground focus-visible:border-primary focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
                 placeholder="Comprou cesta de maternidade. O pai faleceu em maio."
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
@@ -495,7 +505,21 @@ export default function ClientesPage() {
 
             {sugestoesRestantes.length > 0 && (
               <div className="space-y-2">
-                <Label>Sugestões</Label>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label>Sugestões</Label>
+                  {sugestoesRestantes.length > 1 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={criarTodasAsSugestoes}
+                      disabled={criandoEtiquetas}
+                    >
+                      {criandoEtiquetas
+                        ? 'Adicionando...'
+                        : `Adicionar todas (${sugestoesRestantes.length})`}
+                    </Button>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {sugestoesRestantes.map((s) => (
                     <Button
@@ -528,7 +552,7 @@ export default function ClientesPage() {
                 {CORES_ETIQUETA.map((cor) => (
                   <EtiquetaToggle
                     key={cor}
-                    etiqueta={{ id: cor, nome: cor, cor }}
+                    etiqueta={{ id: cor, nome: NOME_DA_COR[cor], cor }}
                     ativa={novaCor === cor}
                     onClick={() => setNovaCor(cor)}
                   />
