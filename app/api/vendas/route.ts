@@ -11,7 +11,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { calcularMetricasVendas } from '@/lib/metrics';
-import { hojeBrasil, primeiroDiaDoMesBrasil } from '@/lib/datas';
+import {
+  hojeBrasil,
+  motivoDataDeVendaInvalida,
+  primeiroDiaDoMesBrasil,
+} from '@/lib/datas';
 import { normalizarTelefone } from '@/lib/telefone';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -27,6 +31,8 @@ interface VendaItem {
 
 interface RegistrarVendaRequest {
   cliente_nome: string;
+  /** Data da venda (AAAA-MM-DD). Ausente = hoje. */
+  data?: string;
   customer_id?: string;
   cliente_telefone?: string;
   bairro?: string;
@@ -35,6 +41,8 @@ interface RegistrarVendaRequest {
   notes?: string;
   delivery_date?: string;
   delivery_period?: string;
+  /** Ocasião da compra: aniversário, Namorados, corporativo. */
+  tag_ids?: string[];
 }
 
 /**
@@ -133,6 +141,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Data da venda: o padrão continua sendo hoje, e lançar mês passado é uma
+    // escolha explícita. A validação roda no servidor mesmo a tela já
+    // validando — o navegador é o único lugar onde a regra pode ser burlada.
+    const dataDaVenda = body.data?.trim() || hojeBrasil();
+    const dataInvalida = motivoDataDeVendaInvalida(dataDaVenda);
+    if (dataInvalida) {
+      return NextResponse.json({ error: dataInvalida }, { status: 400 });
+    }
+
     // ============================================
     // CÁLCULO DO FATURAMENTO TOTAL
     // ============================================
@@ -154,7 +171,7 @@ export async function POST(request: NextRequest) {
       .insert({
         workspace_id: user.id,
         customer_id: customerId,
-        data: hojeBrasil(), // Data de hoje no fuso do Brasil, não em UTC
+        data: dataDaVenda, // hoje por padrão; retroativa quando ela informa
         cliente_nome: body.cliente_nome,
         bairro: body.bairro || null,
         faturamento_total: total_com_frete,
@@ -233,7 +250,24 @@ export async function POST(request: NextRequest) {
     }
 
     // ============================================
-    // 3. ATUALIZAR MÉTRICAS DO CLIENTE
+    // 3. ETIQUETAS DA VENDA (ocasião da compra)
+    // ============================================
+    // Não aborta a venda se falhar, pela mesma razão que o vínculo com a
+    // cliente não aborta (ver resolverCliente): perder a etiqueta é
+    // aborrecimento, perder a venda é perder faturamento. A RLS da migration
+    // 010 é quem garante que só entra etiqueta da própria aluna.
+    if (body.tag_ids?.length) {
+      const { error: etiquetasError } = await supabase
+        .from('venda_tag_links')
+        .insert(body.tag_ids.map((tag_id) => ({ venda_id: vendaDiaria.id, tag_id })));
+
+      if (etiquetasError) {
+        console.error('Não foi possível etiquetar a venda:', etiquetasError);
+      }
+    }
+
+    // ============================================
+    // 4. ATUALIZAR MÉTRICAS DO CLIENTE
     // ============================================
 
     // Antes isto só rodava quando a tela enviava customer_id — o que ela nunca
@@ -242,17 +276,33 @@ export async function POST(request: NextRequest) {
     if (customerId) {
       const { data: customer } = await supabase
         .from('customers')
-        .select('total_orders, total_spent')
+        .select('total_orders, total_spent, last_order_at')
         .eq('id', customerId)
         .single();
 
       if (customer) {
+        // `last_order_at` é a data DA VENDA, não do momento em que ela foi
+        // digitada — e só avança, nunca retrocede.
+        //
+        // Com o lançamento retroativo isso deixou de ser detalhe: gravar
+        // `new Date()` faria uma venda de julho digitada hoje marcar a cliente
+        // como tendo comprado hoje. Quem lê esse campo é o filtro "Sem comprar
+        // há 3/6/12 meses" (lib/filtros-clientes.ts) e a agenda de lembretes —
+        // ou seja, cadastrar o histórico apagaria justamente a lista de quem
+        // precisa de contato. E o "só avança" existe porque as vendas antigas
+        // costumam ser digitadas fora de ordem: lançar março depois de abril
+        // não pode fazer a cliente parecer mais fria do que é.
+        const dataDaVendaISO = new Date(`${dataDaVenda}T12:00:00-03:00`).toISOString();
+        const anterior = customer.last_order_at;
+        const maisRecente =
+          !anterior || dataDaVendaISO > anterior ? dataDaVendaISO : anterior;
+
         await supabase
           .from('customers')
           .update({
             total_orders: (customer.total_orders || 0) + 1,
             total_spent: (customer.total_spent || 0) + faturamento_total,
-            last_order_at: new Date().toISOString(),
+            last_order_at: maisRecente,
           })
           .eq('id', customerId);
       }
