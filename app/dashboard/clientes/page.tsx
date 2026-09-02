@@ -14,7 +14,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Download, HelpCircle, LayoutGrid, List, Plus, Search, Tag, Upload, Users } from 'lucide-react';
+import {
+  Cake,
+  CheckSquare,
+  Download,
+  HelpCircle,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  Upload,
+  Users,
+} from 'lucide-react';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
 import EtiquetaBadge, {
@@ -23,17 +34,23 @@ import EtiquetaBadge, {
   type CorEtiqueta,
   type Etiqueta,
 } from '@/components/shared/EtiquetaBadge';
+import BarraDeFiltros, { ResumoDasEtiquetas } from '@/components/shared/BarraDeFiltros';
+import IconeWhatsApp from '@/components/shared/IconeWhatsApp';
+import AcoesEmMassa from '@/components/shared/AcoesEmMassa';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ETIQUETAS_SUGERIDAS, NOME_DA_COR } from '@/lib/etiquetas';
-import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
+import { aplicarMascaraTelefone, formatarTelefone, linkWhatsAppCom, saudacao } from '@/lib/telefone';
+import { hojeBrasil } from '@/lib/datas';
 import { CABECALHOS_CLIENTES, LINHAS_EXEMPLO_CLIENTES, gerarCSV, lerCSV } from '@/lib/csv';
 import { cn } from '@/lib/utils';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import {
-  ORDENS,
+  FILTROS_PADRAO,
   SITUACOES,
-  ordenarClientes,
-  passaNaSituacao,
-  type OrdemCliente,
+  aplicarFiltros,
+  contarFiltrosAtivos,
+  descreverAniversario,
+  type FiltrosClientes,
   type SituacaoCliente,
 } from '@/lib/filtros-clientes';
 
@@ -43,6 +60,10 @@ interface Cliente {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  // Aniversário e data de cadastro não aparecem no cartão, mas sustentam os
+  // filtros de data e os lembretes automáticos — por isso vêm na listagem.
+  date_of_birth: string | null;
+  created_at: string | null;
   total_orders: number | null;
   total_spent: number | null;
   last_order_at: string | null;
@@ -50,6 +71,35 @@ interface Cliente {
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/**
+ * O atalho que faltava entre a lista e a conversa.
+ *
+ * A tela sabia produzir "as 20 clientes sem comprar há seis meses" e parava
+ * aí: pra falar com cada uma era abrir a ficha, voltar, abrir a próxima. Aqui
+ * o telefone que já está na tela vira um clique, com a saudação preenchida.
+ *
+ * `stopPropagation` porque na visão de lista a linha inteira leva pra ficha, e
+ * na de cartões existe um link cobrindo o cartão por baixo do conteúdo.
+ */
+function BotaoWhatsApp({ nome, telefone }: { nome: string; telefone: string | null }) {
+  const link = linkWhatsAppCom(telefone, saudacao(nome));
+  if (!link) return null;
+
+  return (
+    <a
+      href={link}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`Falar com ${nome.split(' ')[0]} no WhatsApp`}
+      onClick={(e) => e.stopPropagation()}
+      className="relative z-10 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100 sm:h-9 sm:w-9"
+    >
+      <IconeWhatsApp className="h-4 w-4" />
+      <span className="sr-only">Falar com {nome} no WhatsApp</span>
+    </a>
+  );
+}
 
 // "há 3 meses" diz mais do que uma data pra decidir quem chamar hoje — que é
 // pra isso que a Tania vai olhar esta coluna.
@@ -80,9 +130,12 @@ export default function ClientesPage() {
   const emCache = lerMemoria<{ clientes: Cliente[]; etiquetas: Etiqueta[] }>('clientes');
   const [clientes, setClientes] = useState<Cliente[]>(emCache?.clientes ?? []);
   const [etiquetas, setEtiquetas] = useState<Etiqueta[]>(emCache?.etiquetas ?? []);
+  // Etiquetas de OCASIÃO (marcadas na venda, migration 010). Alimentam o
+  // seletor "Comprou em" junto das datas comemorativas — são fontes
+  // diferentes pra mesma pergunta.
+  const [etiquetasVenda, setEtiquetasVenda] = useState<Etiqueta[]>([]);
   const [loading, setLoading] = useState(emCache === undefined);
   const [busca, setBusca] = useState('');
-  const [filtroEtiqueta, setFiltroEtiqueta] = useState<string | null>(null);
 
   const [aberto, setAberto] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
@@ -102,19 +155,138 @@ export default function ClientesPage() {
   const [criandoEtiquetas, setCriandoEtiquetas] = useState(false);
   const [mostrandoAjudaCSV, setMostrandoAjudaCSV] = useState(false);
 
-  // Situação e ordem são aplicadas aqui no navegador; busca e etiqueta
-  // continuam no banco. A visão escolhida sobrevive à navegação porque fica no
-  // mesmo cache de sessão das telas — trocar de aba e voltar não a reseta.
-  const [situacao, setSituacao] = useState<SituacaoCliente>('todas');
-  const [ordem, setOrdem] = useState<OrdemCliente>('nome');
+  // Todo o recorte acontece aqui no navegador; só a busca por texto continua
+  // no banco, porque é a única que precisa varrer o cadastro inteiro.
+  //
+  // Os filtros e a visão escolhida sobrevivem à navegação porque ficam no
+  // mesmo cache de sessão das telas: abrir a ficha de uma cliente e voltar não
+  // desfaz o recorte que ela acabou de montar — que seria o jeito mais rápido
+  // de fazer alguém desistir de usar filtro.
+  const [filtros, setFiltrosEstado] = useState<FiltrosClientes>(
+    () => lerMemoria<FiltrosClientes>('filtros-clientes') ?? FILTROS_PADRAO,
+  );
   const [visao, setVisao] = useState<'cartoes' | 'lista'>(
     () => lerMemoria<'cartoes' | 'lista'>('visao-clientes') ?? 'cartoes',
   );
+
+  // Só o "estou consultando" fica aqui. O evento escolhido, o rótulo e os ids
+  // moram todos dentro de `filtros`, que é o objeto guardado entre navegações
+  // — antes o seletor e a lista sabiam coisas diferentes ao voltar pra tela.
+  const [carregandoComemorativa, setCarregandoComemorativa] = useState(false);
+
+  // Seleção em massa. Fica desligada por padrão: as caixinhas em toda linha
+  // pesariam a tela no uso normal, que é olhar e ligar, não administrar.
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionadas, setSelecionadas] = useState<string[]>([]);
+
+  // Aceita um valor ou uma função, como o setState de sempre. A forma de
+  // função importa no filtro de data comemorativa, que grava o resultado
+  // DEPOIS de uma ida ao servidor: sem ela, um clique em qualquer outro filtro
+  // durante a espera seria desfeito pela resposta que chega atrasada.
+  const setFiltros = (
+    novos: FiltrosClientes | ((atual: FiltrosClientes) => FiltrosClientes),
+  ) => {
+    setFiltrosEstado((atual) => {
+      const resultado = typeof novos === 'function' ? novos(atual) : novos;
+      gravarMemoria('filtros-clientes', resultado);
+      return resultado;
+    });
+  };
 
   const trocarVisao = (nova: 'cartoes' | 'lista') => {
     setVisao(nova);
     gravarMemoria('visao-clientes', nova);
   };
+
+  /**
+   * "Quem comprou no Dia das Mães" não está em `customers` — a tabela guarda a
+   * última compra, e a pergunta é sobre uma semana específica lá atrás. Só o
+   * histórico de vendas responde, então esse é o único filtro que vai ao
+   * servidor. Vai uma vez por escolha, não a cada clique.
+   */
+  const escolherComemorativa = async (id: string) => {
+    if (!id) {
+      setFiltros((atual) => ({
+        ...atual,
+        comemorativa: '',
+        rotuloComemorativa: null,
+        idsComemorativa: null,
+      }));
+      return;
+    }
+
+    setFiltros((atual) => ({ ...atual, comemorativa: id }));
+    setCarregandoComemorativa(true);
+    try {
+      // O valor carrega a fonte no prefixo: "tag:<uuid>" é etiqueta de ocasião
+      // marcada na venda, qualquer outra coisa é id de data comemorativa. Um
+      // seletor só, porque pra aluna a pergunta é a mesma — "quem comprou no
+      // Dia dos Namorados?" — e ela não deveria precisar saber se a resposta
+      // vem da data da venda ou de uma etiqueta que ela marcou.
+      const parametro = id.startsWith('tag:')
+        ? `tag=${encodeURIComponent(id.slice(4))}`
+        : `data=${encodeURIComponent(id)}`;
+      const res = await fetch(`/api/clientes/compraram?${parametro}`);
+      const dados = await res.json();
+      if (!res.ok) throw new Error(dados.error);
+      setFiltros((atual) =>
+        // Trocar de Natal pra Páscoa dispara duas consultas, e a primeira pode
+        // voltar depois da segunda. Sem esta conferência, o rótulo diria
+        // "Páscoa" e a lista seria a do Natal.
+        atual.comemorativa === id
+          ? {
+              ...atual,
+              // A API rotula a data comemorativa (com o ano da última
+              // ocorrência); pra etiqueta o nome está aqui mesmo.
+              rotuloComemorativa:
+                dados.data.rotulo ??
+                etiquetasVenda.find((e) => `tag:${e.id}` === id)?.nome ??
+                'Ocasião marcada',
+              idsComemorativa: dados.data.ids,
+            }
+          : atual,
+      );
+    } catch (error) {
+      console.error('Erro ao consultar as vendas da data:', error);
+      // Só desliga se a escolha que falhou ainda for a que está na tela.
+      // Sem resposta, o filtro fica desligado por inteiro em vez de mostrar
+      // uma lista vazia que a aluna leria como "nenhuma cliente comprou no
+      // Natal" — e o seletor volta junto, senão diria o contrário da lista.
+      setFiltros((atual) =>
+        atual.comemorativa === id
+          ? { ...atual, comemorativa: '', rotuloComemorativa: null, idsComemorativa: null }
+          : atual,
+      );
+    } finally {
+      setCarregandoComemorativa(false);
+    }
+  };
+
+  /**
+   * Um recorte pedido pela URL: `/dashboard/clientes?situacao=sem-comprar-3`.
+   *
+   * É por aqui que a tela de Lembretes manda a aluna pra cá — "18 clientes sem
+   * comprar há 3 meses →" só funciona se o destino já chegar filtrado.
+   *
+   * Lido de `window.location` e não do `useSearchParams` porque este é o único
+   * lugar do app que precisa disso, e o hook do Next obrigaria a embrulhar a
+   * tela inteira num Suspense pra resolver um detalhe de navegação.
+   */
+  useEffect(() => {
+    const pedida = new URLSearchParams(window.location.search).get('situacao');
+    if (!pedida || !SITUACOES.some((s) => s.valor === pedida)) return;
+
+    // Zera o resto do recorte: a agenda mostrou "18 sem comprar há 3 meses"
+    // contando a base inteira. Se a tela mantivesse a etiqueta que estava
+    // marcada da última visita, o destino mostraria 4 e o número da origem
+    // pareceria errado.
+    setFiltros({ ...FILTROS_PADRAO, situacao: pedida as SituacaoCliente });
+    // Limpa o endereço pra que um F5 depois não reimponha o filtro que ela já
+    // pode ter trocado na mão.
+    window.history.replaceState(null, '', window.location.pathname);
+    // Só na montagem: é um pedido de navegação, não um estado sincronizado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const jaCarregou = useRef(false);
 
@@ -122,23 +294,25 @@ export default function ClientesPage() {
     try {
       const params = new URLSearchParams();
       if (busca.trim()) params.set('busca', busca.trim());
-      if (filtroEtiqueta) params.set('etiqueta', filtroEtiqueta);
 
-      const [resClientes, resEtiquetas] = await Promise.all([
+      const [resClientes, resEtiquetas, resEtiquetasVenda] = await Promise.all([
         fetch(`/api/clientes?${params.toString()}`),
         fetch('/api/etiquetas'),
+        fetch('/api/etiquetas-venda'),
       ]);
-      const [dadosClientes, dadosEtiquetas] = await Promise.all([
+      const [dadosClientes, dadosEtiquetas, dadosEtiquetasVenda] = await Promise.all([
         resClientes.json(),
         resEtiquetas.json(),
+        resEtiquetasVenda.json(),
       ]);
 
       if (resClientes.ok) setClientes(dadosClientes.data || []);
       if (resEtiquetas.ok) setEtiquetas(dadosEtiquetas.data || []);
+      if (resEtiquetasVenda.ok) setEtiquetasVenda(dadosEtiquetasVenda.data || []);
 
       // Só guarda a lista sem filtro: guardar o resultado de uma busca faria
       // a tela reabrir mostrando o filtro anterior como se fosse tudo.
-      if (resClientes.ok && resEtiquetas.ok && !busca.trim() && !filtroEtiqueta) {
+      if (resClientes.ok && resEtiquetas.ok && !busca.trim()) {
         gravarMemoria('clientes', {
           clientes: dadosClientes.data || [],
           etiquetas: dadosEtiquetas.data || [],
@@ -154,7 +328,7 @@ export default function ClientesPage() {
         setLoading(false);
       }
     }
-  }, [busca, filtroEtiqueta]);
+  }, [busca]);
 
   // Espera a digitação parar antes de consultar o servidor.
   useEffect(() => {
@@ -177,7 +351,10 @@ export default function ClientesPage() {
       phone: c.phone ? formatarTelefone(c.phone) : '',
       email: c.email || '',
       notes: c.notes || '',
-      date_of_birth: '',
+      // Vinha vazio, e como o PATCH grava tudo o que recebe, salvar uma edição
+      // apagava o aniversário da cliente — justo o campo de que dependem o
+      // filtro de aniversariantes e o lembrete automático.
+      date_of_birth: c.date_of_birth || '',
     });
     setEtiquetasDoForm(c.etiquetas.map((e) => e.id));
     setErro('');
@@ -270,7 +447,33 @@ export default function ClientesPage() {
 
   const removerEtiqueta = async (id: string) => {
     await fetch(`/api/etiquetas/${id}`, { method: 'DELETE' });
-    if (filtroEtiqueta === id) setFiltroEtiqueta(null);
+    if (filtros.etiquetas.includes(id)) {
+      setFiltros({ ...filtros, etiquetas: filtros.etiquetas.filter((x) => x !== id) });
+    }
+    await carregar();
+  };
+
+  const alternarSelecao = (id: string) =>
+    setSelecionadas((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id],
+    );
+
+  const sairDaSelecao = () => {
+    setModoSelecao(false);
+    setSelecionadas([]);
+  };
+
+  const aplicarEtiquetaEmMassa = async (tagId: string, acao: 'aplicar' | 'remover') => {
+    const res = await fetch('/api/etiquetas/aplicar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customer_ids: selecionadas, tag_id: tagId, acao }),
+    });
+    const resultado = await res.json();
+    if (!res.ok) throw new Error(resultado.error || 'Erro ao etiquetar');
+    // A seleção continua de pé: quase sempre ela vai querer aplicar uma
+    // segunda etiqueta no mesmo grupo, e refazer a seleção seria o dobro do
+    // trabalho pelo qual ela veio aqui.
     await carregar();
   };
 
@@ -323,10 +526,29 @@ export default function ClientesPage() {
     }
   };
 
-  const clientesVisiveis = ordenarClientes(
-    clientes.filter((cliente) => passaNaSituacao(cliente, situacao)),
-    ordem,
-  );
+  // Um "hoje" só por render. Com duas chamadas a `hojeBrasil()` — uma no
+  // filtro, outra na coluna de aniversário — um render que atravessasse a
+  // meia-noite podia listar por um dia e escrever "é hoje" por outro.
+  const hoje = hojeBrasil();
+
+  const clientesVisiveis = aplicarFiltros(clientes, filtros, hoje);
+  const filtrosAtivos = contarFiltrosAtivos(filtros);
+
+  // Quem está selecionada mas saiu do recorte atual. Acontece o tempo todo:
+  // filtrar "Sem etiqueta", selecionar todas e aplicar uma etiqueta faz as 18
+  // sumirem da lista — e a barra continuava anunciando "18 selecionadas" em
+  // cima de uma tela vazia, sem nada explicando.
+  const idsVisiveis = new Set(clientesVisiveis.map((c) => c.id));
+  const selecionadasForaDaLista = selecionadas.filter((id) => !idsVisiveis.has(id)).length;
+
+  // A coluna de aniversário aparece só quando é disso que a lista trata. Fixa,
+  // roubaria espaço das colunas que ela usa no dia a dia; ausente no filtro de
+  // aniversariantes, deixava a lista sem a informação que motivou o filtro.
+  const aniversarioDe = (cliente: Cliente) => descreverAniversario(cliente, hoje);
+  const mostrarAniversario =
+    filtros.situacao === 'aniversariantes-semana' ||
+    filtros.situacao === 'aniversariantes-mes' ||
+    filtros.ordem === 'aniversario';
 
   const sugestoesRestantes = ETIQUETAS_SUGERIDAS.filter(
     (s) => !etiquetas.some((e) => e.nome.toLowerCase() === s.nome.toLowerCase()),
@@ -387,96 +609,62 @@ export default function ClientesPage() {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setFiltroEtiqueta(null)}
-            className={cn(
-              'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-              filtroEtiqueta === null
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-input bg-white/60 text-muted-foreground backdrop-blur-md hover:bg-accent',
-            )}
-          >
-            Todas
-          </button>
-          {etiquetas.map((etiqueta) => (
-            <EtiquetaToggle
-              key={etiqueta.id}
-              etiqueta={etiqueta}
-              ativa={filtroEtiqueta === etiqueta.id}
-              onClick={() => setFiltroEtiqueta(filtroEtiqueta === etiqueta.id ? null : etiqueta.id)}
-            />
-          ))}
-          <Button variant="ghost" size="sm" onClick={() => setGerenciandoEtiquetas(true)}>
-            <Tag className="mr-2 h-3 w-3" /> Etiquetas
-          </Button>
-        </div>
-
-        {/* Filtros de situação. Cada um veio de algo que a Tania descreveu na
-            reunião contando como funcionava o sistema da Reserva: "você tem 10
-            contatos de aniversário, 20 contatos de clientes que não compram há
-            seis meses". A ideia é a lista virar a lista de quem ligar hoje. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {SITUACOES.map((s) => (
-            <button
-              key={s.valor}
-              type="button"
-              title={s.ajuda}
-              aria-pressed={situacao === s.valor}
-              onClick={() => setSituacao(s.valor)}
-              className={cn(
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                situacao === s.valor
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-input bg-white/60 text-muted-foreground backdrop-blur-md hover:bg-accent',
-              )}
-            >
-              {s.rotulo}
-            </button>
-          ))}
-        </div>
+        <BarraDeFiltros
+          filtros={filtros}
+          onChange={setFiltros}
+          etiquetas={etiquetas}
+          onGerenciarEtiquetas={() => setGerenciandoEtiquetas(true)}
+          onComemorativa={escolherComemorativa}
+          etiquetasVenda={etiquetasVenda}
+          carregandoComemorativa={carregandoComemorativa}
+        />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Ordenar por
-            <select
-              value={ordem}
-              onChange={(e) => setOrdem(e.target.value as OrdemCliente)}
-              className="h-9 rounded-xl border border-input bg-white/70 px-3 text-xs text-foreground backdrop-blur-md focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/30"
-            >
-              {ORDENS.map((o) => (
-                <option key={o.valor} value={o.valor}>
-                  {o.rotulo}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>
+              <strong className="text-foreground">{clientesVisiveis.length}</strong>
+              {filtrosAtivos > 0 || busca ? ` de ${clientes.length}` : ''} cliente
+              {clientesVisiveis.length === 1 ? '' : 's'}
+            </span>
+            <ResumoDasEtiquetas filtros={filtros} etiquetas={etiquetas} />
+          </div>
 
-          <div className="flex items-center gap-1 rounded-full border border-input bg-white/60 p-1 backdrop-blur-md">
-            {(
-              [
-                { valor: 'cartoes' as const, Icone: LayoutGrid, rotulo: 'Cartões' },
-                { valor: 'lista' as const, Icone: List, rotulo: 'Lista' },
-              ]
-            ).map(({ valor, Icone, rotulo }) => (
-              <button
-                key={valor}
-                type="button"
-                aria-pressed={visao === valor}
-                title={rotulo}
-                onClick={() => trocarVisao(valor)}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
-                  visao === valor
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-accent',
-                )}
-              >
-                <Icone className="h-3.5 w-3.5" />
-                {rotulo}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={modoSelecao ? 'secondary' : 'ghost'}
+              size="sm"
+              aria-pressed={modoSelecao}
+              onClick={() => (modoSelecao ? sairDaSelecao() : setModoSelecao(true))}
+            >
+              <CheckSquare className="mr-2 h-3.5 w-3.5" />
+              {modoSelecao ? 'Sair da seleção' : 'Selecionar'}
+            </Button>
+
+            <div className="flex items-center gap-1 rounded-full border border-input bg-white/60 p-1 backdrop-blur-md">
+              {(
+                [
+                  { valor: 'cartoes' as const, Icone: LayoutGrid, rotulo: 'Cartões' },
+                  { valor: 'lista' as const, Icone: List, rotulo: 'Lista' },
+                ]
+              ).map(({ valor, Icone, rotulo }) => (
+                <button
+                  key={valor}
+                  type="button"
+                  aria-pressed={visao === valor}
+                  title={rotulo}
+                  onClick={() => trocarVisao(valor)}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                    visao === valor
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent',
+                  )}
+                >
+                  <Icone className="h-3.5 w-3.5" />
+                  {rotulo}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -488,11 +676,11 @@ export default function ClientesPage() {
           <CardContent className="space-y-5 px-8 py-10 text-center">
             <Users className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              {busca || filtroEtiqueta
-                ? 'Nenhuma cliente encontrada com esse filtro.'
+              {busca
+                ? 'Nenhuma cliente encontrada com esse nome ou telefone.'
                 : 'Sua base de clientes é o seu maior ativo. Cadastre a primeira — ou registre uma venda com o nome e o telefone, que ela entra aqui sozinha.'}
             </p>
-            {!busca && !filtroEtiqueta && (
+            {!busca && (
               <div className="space-y-2">
                 <Button onClick={abrirNovo} className="w-full">
                   <Plus className="mr-2 h-4 w-4" /> Cadastrar minha primeira cliente
@@ -508,18 +696,29 @@ export default function ClientesPage() {
         <Card className="mx-auto max-w-md">
           <CardContent className="space-y-4 px-8 py-10 text-center">
             <p className="text-sm text-muted-foreground">
-              Nenhuma cliente nesta situação agora. Isso é uma boa notícia, dependendo do filtro.
+              Nenhuma cliente nesse recorte agora. Dependendo do filtro, isso é uma boa notícia —
+              ninguém sumido, ninguém sem comprar.
             </p>
-            <Button variant="outline" onClick={() => setSituacao('todas')}>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setFiltros((atual) => ({
+                  ...atual,
+                  situacao: 'todas',
+                  etiquetas: [],
+                  semEtiqueta: false,
+                  comemorativa: '',
+                  rotuloComemorativa: null,
+                  idsComemorativa: null,
+                }))
+              }
+            >
               Ver todas as clientes
             </Button>
           </CardContent>
         </Card>
       ) : visao === 'lista' ? (
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            {clientesVisiveis.length} cliente{clientesVisiveis.length > 1 ? 's' : ''}
-          </p>
           {/* A tabela rola na horizontal no celular em vez de espremer as
               colunas — nome e telefone, que é o que ela usa pra ligar, ficam
               nas duas primeiras e sempre à vista. */}
@@ -527,8 +726,12 @@ export default function ClientesPage() {
             <table className="w-full min-w-[46rem] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  {modoSelecao && <th className="w-10 px-4 py-3" />}
                   <th className="px-4 py-3 font-semibold">Cliente</th>
                   <th className="px-4 py-3 font-semibold">Telefone</th>
+                  {mostrarAniversario && (
+                    <th className="px-4 py-3 font-semibold">Aniversário</th>
+                  )}
                   <th className="px-4 py-3 font-semibold">Etiquetas</th>
                   <th className="px-4 py-3 font-semibold">Última compra</th>
                   <th className="px-4 py-3 text-right font-semibold">Compras</th>
@@ -540,20 +743,52 @@ export default function ClientesPage() {
                 {clientesVisiveis.map((cliente) => (
                   <tr
                     key={cliente.id}
-                    onClick={() => router.push(`/dashboard/clientes/${cliente.id}`)}
-                    className="cursor-pointer transition-colors hover:bg-accent/60"
+                    // Em modo de seleção a linha inteira marca e desmarca, em
+                    // vez de abrir a ficha: quem entrou aqui veio classificar,
+                    // e mirar na caixinha a cada linha seria trabalho à toa.
+                    onClick={() =>
+                      modoSelecao
+                        ? alternarSelecao(cliente.id)
+                        : router.push(`/dashboard/clientes/${cliente.id}`)
+                    }
+                    className={cn(
+                      'cursor-pointer transition-colors hover:bg-accent/60',
+                      modoSelecao && selecionadas.includes(cliente.id) && 'bg-primary/10',
+                    )}
                   >
+                    {modoSelecao && (
+                      /* O clique na caixinha PARA aqui. Sem isto ele também
+                         subia pra linha, que alterna a seleção: o item era
+                         marcado e desmarcado no mesmo clique, e a caixinha
+                         parecia quebrada. */
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selecionadas.includes(cliente.id)}
+                          onCheckedChange={() => alternarSelecao(cliente.id)}
+                          aria-label={`Selecionar ${cliente.name}`}
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/dashboard/clientes/${cliente.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {cliente.name}
-                      </Link>
+                      {modoSelecao ? (
+                        <span className="font-medium">{cliente.name}</span>
+                      ) : (
+                        <Link
+                          href={`/dashboard/clientes/${cliente.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          {cliente.name}
+                        </Link>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                       {cliente.phone ? formatarTelefone(cliente.phone) : '—'}
                     </td>
+                    {mostrarAniversario && (
+                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
+                        {aniversarioDe(cliente) ?? '—'}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       {cliente.etiquetas.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
@@ -572,19 +807,27 @@ export default function ClientesPage() {
                     <td className="px-4 py-3 text-right font-semibold">
                       {brl(cliente.total_spent || 0)}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      {/* Sem o stopPropagation o clique subiria pra linha e
-                          abriria a ficha em vez do formulário de edição. */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          abrirEdicao(cliente);
-                        }}
-                      >
-                        Editar
-                      </Button>
+                    <td className="px-4 py-3">
+                      {/* Escondidas durante a seleção, como nos cartões: ali a
+                          linha inteira é um alvo de marcar, e um botão que faz
+                          outra coisa no meio dela só gera clique errado. */}
+                      {!modoSelecao && (
+                        <div className="flex items-center justify-end gap-1">
+                          <BotaoWhatsApp nome={cliente.name} telefone={cliente.phone} />
+                          {/* Sem o stopPropagation o clique subiria pra linha e
+                              abriria a ficha em vez do formulário de edição. */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              abrirEdicao(cliente);
+                            }}
+                          >
+                            Editar
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -594,41 +837,79 @@ export default function ClientesPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            {clientesVisiveis.length} cliente{clientesVisiveis.length > 1 ? 's' : ''}
-          </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {clientesVisiveis.map((cliente) => (
               <Card
                 key={cliente.id}
-                className="group relative transition-colors hover:bg-white/90"
+                onClick={modoSelecao ? () => alternarSelecao(cliente.id) : undefined}
+                className={cn(
+                  'group relative transition-colors hover:bg-white/90',
+                  modoSelecao && 'cursor-pointer',
+                  modoSelecao && selecionadas.includes(cliente.id) && 'ring-2 ring-primary',
+                )}
               >
                 {/* O cartão inteiro abre a ficha. O link cobre o cartão por
                     baixo do conteúdo em vez de envolvê-lo, porque um <a> não
                     pode conter um <button> — assim o "Editar" continua sendo
-                    um botão de verdade, e não um link disfarçado. */}
-                <Link
-                  href={`/dashboard/clientes/${cliente.id}`}
-                  aria-label={`Abrir a ficha de ${cliente.name}`}
-                  className="absolute inset-0 z-0 rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
+                    um botão de verdade, e não um link disfarçado.
+                    Em modo de seleção ele sai de cena: o cartão passa a marcar
+                    e desmarcar, e um link por baixo levaria embora da tela no
+                    meio da classificação. */}
+                {!modoSelecao && (
+                  <Link
+                    href={`/dashboard/clientes/${cliente.id}`}
+                    aria-label={`Abrir a ficha de ${cliente.name}`}
+                    className="absolute inset-0 z-0 rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                )}
                 <CardContent className="space-y-3 p-6">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold group-hover:underline">{cliente.name}</p>
+                    {modoSelecao && (
+                      /* Mesmo motivo da visão de lista: o cartão inteiro
+                         alterna a seleção, então o clique na caixinha não pode
+                         subir — senão ele desfaz o que acabou de fazer. */
+                      <span onClick={(e) => e.stopPropagation()} className="relative z-10 mt-1">
+                        <Checkbox
+                          checked={selecionadas.includes(cliente.id)}
+                          onCheckedChange={() => alternarSelecao(cliente.id)}
+                          aria-label={`Selecionar ${cliente.name}`}
+                        />
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={cn(
+                          'truncate font-semibold',
+                          !modoSelecao && 'group-hover:underline',
+                        )}
+                      >
+                        {cliente.name}
+                      </p>
                       {cliente.phone && (
                         <p className="text-sm text-muted-foreground">{formatarTelefone(cliente.phone)}</p>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="relative z-10"
-                      onClick={() => abrirEdicao(cliente)}
-                    >
-                      Editar
-                    </Button>
+                    {!modoSelecao && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <BotaoWhatsApp nome={cliente.name} telefone={cliente.phone} />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="relative z-10"
+                          onClick={() => abrirEdicao(cliente)}
+                        >
+                          Editar
+                        </Button>
+                      </div>
+                    )}
                   </div>
+
+                  {mostrarAniversario && aniversarioDe(cliente) && (
+                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <Cake className="h-3.5 w-3.5" />
+                      {aniversarioDe(cliente)}
+                    </p>
+                  )}
 
                   {cliente.etiquetas.length > 0 && (
                     <div className="flex flex-wrap gap-1">
@@ -653,6 +934,32 @@ export default function ClientesPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* A barra fixa cobriria a última cliente da lista sem esta folga. */}
+      {modoSelecao && selecionadas.length > 0 && <div className="h-32" />}
+
+      {modoSelecao && selecionadas.length > 0 && (
+        <AcoesEmMassa
+          selecionadas={selecionadas.length}
+          foraDaLista={selecionadasForaDaLista}
+          totalVisivel={clientesVisiveis.length}
+          etiquetas={etiquetas}
+          onSelecionarTodas={() => setSelecionadas(clientesVisiveis.map((c) => c.id))}
+          onLimpar={() => setSelecionadas([])}
+          onSair={sairDaSelecao}
+          onAplicar={aplicarEtiquetaEmMassa}
+          onGerenciarEtiquetas={() => setGerenciandoEtiquetas(true)}
+        />
+      )}
+
+      {/* Entrou no modo de seleção e ainda não marcou ninguém: sem isto a tela
+          muda (caixinhas aparecem) e nada explica o que fazer com elas. */}
+      {modoSelecao && selecionadas.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Marque as clientes que você quer etiquetar de uma vez — ou filtre primeiro e depois
+          selecione todas.
+        </p>
       )}
 
       {/* Cadastro / edição */}

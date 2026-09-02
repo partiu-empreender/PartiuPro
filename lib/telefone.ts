@@ -45,6 +45,29 @@ export function linkWhatsApp(telefone: string | null | undefined): string | null
 }
 
 /**
+ * O mesmo link, já com o começo da mensagem escrito.
+ *
+ * A tela de clientes existe pra produzir listas de quem chamar. Sem isto, o
+ * caminho era: filtrar, abrir a ficha, voltar, abrir a próxima — e escrever
+ * "oi" vinte vezes. O texto é rascunho: o WhatsApp abre com ele preenchido e
+ * ela edita antes de enviar.
+ */
+export function linkWhatsAppCom(
+  telefone: string | null | undefined,
+  texto: string,
+): string | null {
+  const base = linkWhatsApp(telefone);
+  if (!base) return null;
+  return texto ? `${base}?text=${encodeURIComponent(texto)}` : base;
+}
+
+/** "Oi, Ana!" — só o primeiro nome, que é como se fala no WhatsApp. */
+export function saudacao(nomeCompleto: string): string {
+  const primeiro = (nomeCompleto || '').trim().split(/\s+/)[0];
+  return primeiro ? `Oi, ${primeiro}!` : 'Oi!';
+}
+
+/**
  * Máscara progressiva, pra usar enquanto a pessoa digita:
  * (21) 9999-8888 até 10 dígitos, (21) 99999-8888 a partir de 11.
  *

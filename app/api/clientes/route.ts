@@ -39,7 +39,6 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const busca = (searchParams.get('busca') || '').trim();
-    const tagId = searchParams.get('etiqueta');
 
     let query = supabase
       .from('customers')
@@ -66,15 +65,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let lista = ((clientes || []) as unknown as Record<string, unknown>[]).map(comEtiquetas);
-
-    // Filtro por etiqueta aplicado aqui e não no banco: filtrar pela tabela de
-    // ligação faria a consulta devolver só a etiqueta procurada, e a lista
-    // perderia as outras etiquetas de cada cliente. Com 10-40 clientes por
-    // aluna, filtrar em memória é irrelevante em custo.
-    if (tagId) {
-      lista = lista.filter((cliente) => cliente.etiquetas.some((tag) => tag.id === tagId));
-    }
+    // Etiqueta, situação e data comemorativa são todas filtradas no navegador
+    // (ver `lib/filtros-clientes.ts`). Esta rota devolve a base inteira, ou o
+    // resultado da busca por texto — que é a única que precisa do banco.
+    //
+    // O parâmetro `?etiqueta=` existia aqui e foi removido: depois que a tela
+    // passou a permitir marcar várias etiquetas de uma vez, ninguém mais o
+    // mandava, e um filtro que a API aceita mas nada usa só engana quem lê.
+    const lista = ((clientes || []) as unknown as Record<string, unknown>[]).map(comEtiquetas);
 
     return NextResponse.json({ success: true, data: lista });
   } catch (error) {

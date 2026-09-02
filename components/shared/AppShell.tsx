@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  BellRing,
   HeartHandshake,
   LayoutDashboard,
   LogOut,
@@ -31,6 +32,7 @@ interface AppShellProps {
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/clientes', label: 'Clientes', icon: Users },
+  { href: '/dashboard/lembretes', label: 'Lembretes', icon: BellRing },
   { href: '/dashboard/produtos', label: 'Catálogo', icon: Package },
   { href: '/dashboard/atendimentos', label: 'Atendimentos', icon: HeartHandshake },
   { href: '/dashboard/metas', label: 'Metas', icon: Target },

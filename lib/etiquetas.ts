@@ -33,20 +33,60 @@ export function ehCorValida(cor: unknown): cor is CorEtiqueta {
 // Clientes; a aluna adiciona as que quiser (ou todas de uma vez) e pode criar
 // as dela por cima.
 //
+// A lista já foi maior. Cinco saíram em 2026-08-31, por dois motivos
+// diferentes — e ambos são a mesma regra vista de dois ângulos.
+//
+// "Pagamento pendente" e "Aguardando entrega de pedido" eram atributos do
+// PEDIDO, não da cliente: a etiqueta fica pendurada na pessoa depois que o
+// pedido já foi pago ou entregue, e na segunda compra ninguém sabe mais a qual
+// pedido ela se referia. Esse estado pertence à venda.
+//
+// "Melhores Clientes", "Clientes Inativos" e "Clientes Mornos/Frios" o sistema
+// já sabe sozinho: viraram filtros em `lib/filtros-clientes.ts`, calculados a
+// partir de `total_spent` e `last_order_at`. Como etiqueta manual elas
+// apodreciam — a cliente inativa compra de novo e continua marcada como
+// inativa até alguém lembrar de tirar. Sugerir as duas versões lado a lado era
+// convidar a aluna pra manter à mão o que já se mantém sozinho.
+//
+// "Cliente VIP" ficou de propósito: pode ser um julgamento dela ("essa aqui eu
+// atendo de madrugada"), que nenhum cálculo de valor gasto alcança.
+//
 // As cores foram escolhidas pelo significado, não pela ordem: quem vale mais
 // é quente (âmbar, esmeralda), quem exige ação é vermelho/laranja, quem é
 // neutro ou administrativo é cinza/teal, e quem esfriou é cinza/azul.
 export const ETIQUETAS_SUGERIDAS: { nome: string; cor: CorEtiqueta }[] = [
   { nome: 'Cliente VIP', cor: 'amber' },
-  { nome: 'Pagamento pendente', cor: 'red' },
-  { nome: 'Aguardando entrega de pedido', cor: 'orange' },
-  { nome: 'Dia das Mães', cor: 'rose' },
-  { nome: 'Melhores Clientes', cor: 'emerald' },
-  { nome: 'NF', cor: 'teal' },
-  { nome: 'Clientes Inativos', cor: 'slate' },
   { nome: 'Cliente Corporativo', cor: 'violet' },
+  { nome: 'Dia das Mães', cor: 'rose' },
+  { nome: 'NF', cor: 'teal' },
   { nome: 'Observação no pedido', cor: 'fuchsia' },
-  { nome: 'Clientes Mornos/Frios', cor: 'sky' },
+];
+
+// ============================================
+// Etiquetas de VENDA (ocasião da compra)
+// ============================================
+//
+// Ficam na venda, não na cliente — ver o comentário de
+// supabase/migrations/010_etiquetas_na_venda.sql. A distinção que sustenta as
+// duas listas: acima é o que a pessoa É ("Cliente VIP", vale sempre); aqui é o
+// que a compra FOI ("Aniversário", vale pra aquela venda e só).
+//
+// Por isso "Cliente VIP" não aparece aqui e "Aniversário" não aparece lá: a
+// mesma cliente compra pro aniversário em junho e pro Natal em dezembro, e
+// pendurar as duas nela pra sempre não diria nada sobre nenhuma das compras.
+//
+// Datas comemorativas que o sistema já reconhece pela data da venda
+// (lib/datas-comemorativas.ts) entram assim mesmo, de propósito: a data cobre
+// quem comprou NA SEMANA do evento, e a etiqueta cobre o resto — a encomenda
+// de Natal fechada em outubro, o presente de Dia das Mães comprado com um mês
+// de antecedência. O filtro soma as duas fontes.
+export const ETIQUETAS_DE_VENDA_SUGERIDAS: { nome: string; cor: CorEtiqueta }[] = [
+  { nome: 'Aniversário', cor: 'fuchsia' },
+  { nome: 'Dia dos Namorados', cor: 'red' },
+  { nome: 'Dia das Mães', cor: 'rose' },
+  { nome: 'Natal', cor: 'emerald' },
+  { nome: 'Corporativo', cor: 'violet' },
+  { nome: 'Autopresente', cor: 'amber' },
 ];
 
 // O seletor de cor mostra estes rótulos. Sem eles a Tania escolheria entre

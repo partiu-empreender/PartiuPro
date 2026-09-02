@@ -5,9 +5,16 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, MessageCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import IconeWhatsApp from '@/components/shared/IconeWhatsApp';
 import PageShell from '@/components/shared/PageShell';
 import EtiquetaBadge, { type Etiqueta } from '@/components/shared/EtiquetaBadge';
+import ItemLembrete from '@/components/shared/ItemLembrete';
+import DetalheLembreteDialog from '@/components/shared/DetalheLembreteDialog';
+import NovoLembreteDialog from '@/components/shared/NovoLembreteDialog';
+import { usarLembretes } from '@/lib/usar-lembretes';
+import type { Lembrete } from '@/lib/lembretes';
+import { hojeBrasil } from '@/lib/datas';
 import { formatarTelefone, linkWhatsApp } from '@/lib/telefone';
 import {
   Dialog,
@@ -29,6 +36,8 @@ interface Compra {
   data: string;
   faturamento_total: number;
   venda_itens: ItemCompra[];
+  /** Ocasião da compra — aniversário, Natal, corporativo (migration 010). */
+  etiquetas?: Etiqueta[];
 }
 
 interface ClienteDetalhe {
@@ -57,6 +66,25 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
+  const [criandoLembrete, setCriandoLembrete] = useState(false);
+  // Marcar um lembrete por engano aqui não tinha volta: ele sumia e a única
+  // forma de desmarcar era descobrir sozinha que a tela de Lembretes tem o
+  // botão "Incluir os já resolvidos".
+  const [verResolvidos, setVerResolvidos] = useState(false);
+  // Aqui a linha do lembrete abre o detalhe, e nao a ficha: voce ja esta nela.
+  const [lembreteAberto, setLembreteAberto] = useState<Lembrete | null>(null);
+
+  // A agenda desta cliente. O hook é chamado antes de qualquer `return`
+  // porque as regras dos hooks não permitem chamada condicional — e esta
+  // página tem dois retornos antecipados (carregando e erro).
+  const {
+    lembretes,
+    resumo,
+    concluir,
+    adiar,
+    criar: criarLembrete,
+    remover: removerLembrete,
+  } = usarLembretes({ cliente: params.id, incluirConcluidos: verResolvidos });
 
   useEffect(() => {
     (async () => {
@@ -121,8 +149,8 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
 
       {whatsapp && (
         <a href={whatsapp} target="_blank" rel="noopener noreferrer">
-          <Button className="w-full sm:w-auto">
-            <MessageCircle className="mr-2 h-4 w-4" /> Conversar no WhatsApp
+          <Button className="w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto">
+            <IconeWhatsApp className="mr-2 h-4 w-4" /> Conversar no WhatsApp
           </Button>
         </a>
       )}
@@ -164,6 +192,45 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
       )}
 
       <Card>
+        <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle>Lembretes</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setVerResolvidos((v) => !v)}>
+              {verResolvidos ? 'Só os pendentes' : 'Ver resolvidos'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setCriandoLembrete(true)}>
+              <Plus className="mr-2 h-3 w-3" /> Novo
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {lembretes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {verResolvidos
+                ? `Nada marcado nem resolvido com ${cliente.name.split(' ')[0]}.`
+                : `Nada pendente com ${cliente.name.split(' ')[0]}.`}
+              {!cliente.date_of_birth &&
+                ' Preenchendo o aniversário dela no cadastro, o lembrete aparece aqui sozinho todo ano.'}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {lembretes.map((lembrete) => (
+                <ItemLembrete
+                  key={lembrete.id}
+                  lembrete={lembrete}
+                  hoje={resumo?.hoje ?? hojeBrasil()}
+                  onConcluir={concluir}
+                  onAdiar={adiar}
+                  onAbrir={setLembreteAberto}
+                  onRemover={removerLembrete}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
           <CardTitle>Histórico de compras</CardTitle>
         </CardHeader>
@@ -181,6 +248,17 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
                     <span className="font-medium">{fmtData(compra.data)}</span>
                     <span className="font-bold">{brl(compra.faturamento_total)}</span>
                   </div>
+                  {/* A ocasião fica logo abaixo da data, antes dos itens: é
+                      o que transforma o histórico de "R$ 320 em junho" em
+                      "presente de aniversário em junho" — e é a informação
+                      que a Tania usa pra saber o que oferecer no ano que vem. */}
+                  {(compra.etiquetas || []).length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {(compra.etiquetas || []).map((etiqueta) => (
+                        <EtiquetaBadge key={etiqueta.id} etiqueta={etiqueta} />
+                      ))}
+                    </div>
+                  )}
                   <ul className="mt-1 space-y-0.5">
                     {(compra.venda_itens || []).map((item, i) => (
                       <li key={i} className="text-sm text-muted-foreground">
@@ -208,6 +286,22 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
           <Trash2 className="h-4 w-4" /> Excluir esta cliente
         </button>
       </div>
+
+      <DetalheLembreteDialog
+        lembrete={lembreteAberto}
+        hoje={resumo?.hoje ?? hojeBrasil()}
+        onOpenChange={(aberto) => !aberto && setLembreteAberto(null)}
+        onConcluir={concluir}
+        onAdiar={adiar}
+        onRemover={removerLembrete}
+      />
+
+      <NovoLembreteDialog
+        aberto={criandoLembrete}
+        onOpenChange={setCriandoLembrete}
+        onCriar={criarLembrete}
+        clienteFixo={{ id: cliente.id, name: cliente.name }}
+      />
 
       <Dialog open={confirmandoExclusao} onOpenChange={setConfirmandoExclusao}>
         <DialogContent className="sm:max-w-sm">

@@ -39,7 +39,9 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       // cliente comprou cesta de maternidade, e identificar quem é VIP.
       supabase
         .from('vendas_diarias')
-        .select('id, data, faturamento_total, venda_itens ( produto_nome, quantidade, subtotal, tipo )')
+        .select(
+          'id, data, faturamento_total, venda_itens ( produto_nome, quantidade, subtotal, tipo ), venda_tag_links ( venda_tags ( id, nome, cor ) )',
+        )
         .eq('workspace_id', user.id)
         .eq('customer_id', params.id)
         .order('data', { ascending: false }),
@@ -51,12 +53,23 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
     const { customer_tag_links, ...resto } = cliente as unknown as Record<string, unknown>;
 
+    // Cada compra leva junto a ocasião dela — é o que faz o histórico
+    // responder "a de junho foi aniversário, a de dezembro foi Natal" em vez
+    // de listar só valores.
+    const comprasComEtiquetas = (compras || []).map((compra) => {
+      const { venda_tag_links, ...dadosDaCompra } = compra as unknown as Record<string, unknown>;
+      return {
+        ...dadosDaCompra,
+        etiquetas: extrairEtiquetas(venda_tag_links, 'venda_tags'),
+      };
+    });
+
     return NextResponse.json({
       success: true,
       data: {
         ...resto,
         etiquetas: extrairEtiquetas(customer_tag_links),
-        compras: compras || [],
+        compras: comprasComEtiquetas,
       },
     });
   } catch (error) {
