@@ -10,8 +10,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-
-type MargemType = 0.8 | 0.9 | 1.0 | 1.2;
+import { aplicarMascaraMoeda, parsearMoeda } from '@/lib/moeda';
 
 interface PricingStep {
   id: number;
@@ -27,23 +26,22 @@ const steps: PricingStep[] = [
   { id: 4, title: 'Exemplo real', icon: '☕' },
 ];
 
-const margemOpcoes = [
-  { label: 'Moderada', value: 0.8 },
-  { label: 'Recomendada', value: 0.9 },
-  { label: 'Premium', value: 1.0 },
-  { label: 'Alto valor', value: 1.2 },
-];
-
 export default function PricingCalculator() {
   const [currentStep, setCurrentStep] = useState(0);
-  const [custo, setCusto] = useState(75.16);
-  const [fixoPct, setFixoPct] = useState(0.25);
-  const [margem, setMargem] = useState<MargemType>(0.9);
+  // Custo como TEXTO, e não número: o campo aceita "75,16" do jeito que ela
+  // digita, e quem interpreta é lib/moeda.ts. Com type="number" a vírgula
+  // não entra em teclado brasileiro, e o valor some.
+  const [custoTexto, setCustoTexto] = useState('');
+  // Percentuais inteiros pros sliders. Os defaults são os que a Tania ensina:
+  // 20% de custo fixo no começo, 40% de margem.
+  const [fixoPct, setFixoPct] = useState(20);
+  const [margemPct, setMargemPct] = useState(40);
 
   const calcularResultados = () => {
-    const fixoVal = custo * fixoPct;
+    const custo = parsearMoeda(custoTexto) ?? 0;
+    const fixoVal = custo * (fixoPct / 100);
     const subtotal = custo + fixoVal;
-    const margemVal = subtotal * margem;
+    const margemVal = subtotal * (margemPct / 100);
     const precoFinal = subtotal + margemVal;
 
     return {
@@ -52,8 +50,12 @@ export default function PricingCalculator() {
       subtotal: subtotal.toFixed(2),
       margemVal: margemVal.toFixed(2),
       precoFinal: precoFinal.toFixed(2),
-      pctFixo: Math.round(fixoPct * 100),
-      pctMargem: Math.round(margem * 100),
+      // O lucro é o que sobra depois do custo direto e da estrutura. É a
+      // pergunta que a aluna faz de verdade — "quanto sobra pra mim?" — e a
+      // calculadora antiga mostrava o preço sem nunca responder isso.
+      lucro: margemVal.toFixed(2),
+      pctFixo: fixoPct,
+      pctMargem: margemPct,
     };
   };
 
@@ -218,52 +220,68 @@ export default function PricingCalculator() {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-muted-foreground block mb-2">
+                <label className="text-sm text-muted-foreground block mb-2" htmlFor="custo-direto">
                   Custo direto total (R$)
                 </label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  value={custo}
-                  onChange={(e) => setCusto(parseFloat(e.target.value))}
+                  id="custo-direto"
+                  inputMode="decimal"
+                  placeholder="75,16"
+                  value={custoTexto}
+                  onChange={(e) => setCustoTexto(aplicarMascaraMoeda(e.target.value))}
                   className="w-full"
                 />
-              </div>
-
-              <div>
-                <label className="text-sm text-muted-foreground block mb-2">
-                  Custo fixo
-                </label>
-                <select
-                  value={fixoPct}
-                  onChange={(e) => setFixoPct(parseFloat(e.target.value))}
-                  className="flex h-11 w-full rounded-xl border border-input bg-white/70 px-4 py-2 text-sm backdrop-blur-md transition-colors focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-ring/30"
-                >
-                  <option value="0.20">20%</option>
-                  <option value="0.25">25%</option>
-                </select>
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-3 font-medium">
-                  Margem de lucro desejada:
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Tudo que vai na cesta: itens, materiais, embalagem e acabamento.
                 </p>
-                <div className="grid grid-cols-2 gap-3">
-                  {margemOpcoes.map((opcao) => (
-                    <button
-                      key={opcao.value}
-                      onClick={() => setMargem(opcao.value as MargemType)}
-                      className={`rounded-2xl p-3 text-center transition-all ${
-                        margem === opcao.value
-                          ? 'border-2 border-primary bg-primary/10'
-                          : 'border border-white/60 bg-white/60 backdrop-blur-md hover:border-primary/50'
-                      }`}
-                    >
-                      <p className="text-xs text-muted-foreground">{opcao.label}</p>
-                      <p className="font-bold text-purple-700">{Math.round(opcao.value * 100)}%</p>
-                    </button>
-                  ))}
+              </div>
+
+              {/* Sliders no lugar do dropdown e dos quatro botões fixos.
+                  O passo de 5% cobre qualquer combinação que ela precise, e
+                  arrastar mostra o preço mexendo — que é como se entende o
+                  efeito da margem. Antes, só 20% ou 25% de custo fixo e quatro
+                  margens pré-definidas: quem quisesse 35% não tinha caminho. */}
+              <div>
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <label className="text-sm font-medium" htmlFor="fixo-pct">
+                    Custos fixos do negócio
+                  </label>
+                  <span className="text-lg font-bold text-purple-700">{fixoPct}%</span>
                 </div>
+                <input
+                  id="fixo-pct"
+                  type="range"
+                  min={0}
+                  max={50}
+                  step={5}
+                  value={fixoPct}
+                  onChange={(e) => setFixoPct(Number(e.target.value))}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  A estrutura pro negócio existir (luz, internet, telefone). No começo,
+                  fique entre <strong className="text-foreground">20% e 25%</strong>. +{' '}
+                  <strong className="text-foreground">{formatMoney(resultado.fixoVal)}</strong>
+                </p>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <label className="text-sm font-medium" htmlFor="margem-pct">
+                    Margem de lucro
+                  </label>
+                  <span className="text-lg font-bold text-purple-700">{margemPct}%</span>
+                </div>
+                <input
+                  id="margem-pct"
+                  type="range"
+                  min={0}
+                  max={150}
+                  step={5}
+                  value={margemPct}
+                  onChange={(e) => setMargemPct(Number(e.target.value))}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                />
               </div>
             </div>
 
@@ -289,6 +307,34 @@ export default function PricingCalculator() {
                 <span className="font-semibold text-purple-900">Preço de venda</span>
                 <span className="text-2xl font-bold text-purple-900">{formatMoney(resultado.precoFinal)}</span>
               </div>
+            </div>
+
+            {/* Custo total e lucro lado a lado. O preço sozinho não responde a
+                pergunta que ela faz de verdade — "quanto sobra pra mim?" —, e
+                sem essa resposta a margem vira número abstrato. */}
+            <div className="grid grid-cols-2 overflow-hidden rounded-2xl border border-white/60 bg-white/60 backdrop-blur-md">
+              <div className="p-4 text-center">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Custo total
+                </p>
+                <p className="mt-1 text-xl font-bold">{formatMoney(resultado.subtotal)}</p>
+              </div>
+              <div className="border-l border-white/60 p-4 text-center">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Seu lucro
+                </p>
+                <p className="mt-1 text-xl font-bold text-purple-700">
+                  {formatMoney(resultado.lucro)}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/60 bg-white/60 p-4 backdrop-blur-md">
+              <p className="text-sm">
+                <strong className="text-purple-700">O lucro não é dinheiro extra:</strong> é o que
+                faz seu negócio crescer. Ele volta pra empresa — e parte dele pode virar o seu
+                pagamento. Isso é ter um negócio.
+              </p>
             </div>
 
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 backdrop-blur-sm">
