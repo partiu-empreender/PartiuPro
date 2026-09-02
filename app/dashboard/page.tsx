@@ -12,6 +12,7 @@ import { calcularRelatorioMensal, type RelatorioMensal } from '@/lib/metrics';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
 import CartaoIndicador from '@/components/shared/CartaoIndicador';
+import LembretesDoDia from '@/components/shared/LembretesDoDia';
 import {
   Dialog,
   DialogContent,
@@ -20,8 +21,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
+import { hojeBrasil, motivoDataDeVendaInvalida, partesHojeBrasil } from '@/lib/datas';
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import { EtiquetaToggle, type Etiqueta } from '@/components/shared/EtiquetaBadge';
+import { ETIQUETAS_DE_VENDA_SUGERIDAS } from '@/lib/etiquetas';
 import {
   ShoppingBag,
   Package,
@@ -39,25 +42,16 @@ import {
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-const CORES_FAIXA: Record<RelatorioMensal['faixas'][number]['tipo'], string> = {
-  baixa: '#dc2626',
-  media: '#d97706',
-  alta: '#16a34a',
-  unica: '#7c3aed',
-};
+// Uma cor por faixa de preço, do mais barato ao mais caro. Como as faixas
+// agora são fixas (lib/metrics.ts), a cor de cada uma é estável entre os
+// meses — dá pra bater o olho no gráfico de dois meses e comparar.
+const CORES_FAIXA = ['#dc2626', '#ea580c', '#d97706', '#16a34a', '#7c3aed'];
 
 // Curva ABC: A é o que sustenta o faturamento, C é a cauda.
 const CORES_CLASSE: Record<'A' | 'B' | 'C', string> = {
   A: 'bg-emerald-100 text-emerald-800',
   B: 'bg-amber-100 text-amber-800',
   C: 'bg-muted text-muted-foreground',
-};
-
-const rotuloFaixa = (faixa: RelatorioMensal['faixas'][number]) => {
-  if (faixa.tipo === 'unica') return 'Todas as vendas';
-  if (faixa.tipo === 'baixa') return `Até ${brl(faixa.max)}`;
-  if (faixa.tipo === 'media') return `Entre ${brl(faixa.min)} e ${brl(faixa.max)}`;
-  return `Acima de ${brl(faixa.min)}`;
 };
 
 interface VendaItemView {
@@ -136,14 +130,29 @@ export default function DashboardPage() {
   // base inteira estiver etiquetada na hora de filtrar.
   const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
   const [etiquetasDaNova, setEtiquetasDaNova] = useState<string[]>([]);
+  // Data da venda. Começa em hoje — o caminho normal continua sendo não mexer
+  // aqui; lançar mês passado é uma escolha explícita dela.
+  const [dataVenda, setDataVenda] = useState(hojeBrasil());
+  // Ocasião DESTA venda (aniversário, Namorados). Não confundir com
+  // `etiquetasDaNova`, que marca o que a CLIENTE é pra sempre: a mesma pessoa
+  // compra pro aniversário em junho e pro Natal em dezembro.
+  const [etiquetasVenda, setEtiquetasVenda] = useState<Etiqueta[]>([]);
+  const [ocasioesDaVenda, setOcasioesDaVenda] = useState<string[]>([]);
+  const [criandoOcasiao, setCriandoOcasiao] = useState('');
   const [itens, setItens] = useState<NovoItemForm[]>([itemVazio()]);
   const [salvando, setSalvando] = useState(false);
   const [formError, setFormError] = useState('');
+  // Confirmação de venda retroativa. A aba "Vendas Registradas" só lista as de
+  // HOJE: sem este aviso, lançar julho salvaria certo e sumiria da tela, e a
+  // aluna concluiria que falhou — lançando tudo de novo e duplicando a venda.
+  const [avisoRetroativo, setAvisoRetroativo] = useState('');
 
   const carregarMetricas = async () => {
     try {
-      const anoAtual = new Date().getFullYear();
-      const mesAtual = new Date().getMonth() + 1;
+      // Fuso do Brasil, e nao o do computador: `new Date().getMonth()` no dia
+      // 1o de manha, num navegador configurado com fuso a leste, ainda devolve
+      // o mes anterior — e a meta do mes some do painel.
+      const { ano: anoAtual, mes: mesAtual } = partesHojeBrasil();
 
       const [resVendas, resMetas, resProdutos] = await Promise.all([
         fetch('/api/vendas'),
@@ -159,9 +168,14 @@ export default function DashboardPage() {
       setVendas(result.vendas || []);
       setCatalogo(resProdutos.ok ? produtosResult.data || [] : []);
 
+      // Number() porque coluna NUMERIC pode chegar como texto — e aí a
+      // comparacao com zero e as contas do relatorio passam a ser de string.
       const metaDoMes: number =
-        (metasResult.data || []).find((m: { mes: number; meta_mensal: number }) => m.mes === mesAtual)
-          ?.meta_mensal || 0;
+        Number(
+          (metasResult.data || []).find(
+            (m: { mes: number; meta_mensal: number | string }) => m.mes === mesAtual,
+          )?.meta_mensal,
+        ) || 0;
 
       const relatorioDoMes = calcularRelatorioMensal(
         result.vendas_mes || [],
@@ -199,7 +213,10 @@ export default function DashboardPage() {
     setSugestoesCliente([]);
     setBuscandoCliente(false);
     setItens([itemVazio()]);
+    setDataVenda(hojeBrasil());
+    setOcasioesDaVenda([]);
     setFormError('');
+    setAvisoRetroativo('');
     setShowRegistroVendaModal(true);
   };
 
@@ -207,13 +224,22 @@ export default function DashboardPage() {
   // aparecem em nenhum outro lugar do painel, então carregá-las junto com as
   // métricas seria uma requisição à toa em toda visita ao dashboard.
   useEffect(() => {
-    if (!showRegistroVendaModal || etiquetas.length > 0) return;
+    if (!showRegistroVendaModal || etiquetas.length > 0 || etiquetasVenda.length > 0) return;
     let ativo = true;
     (async () => {
       try {
-        const res = await fetch('/api/etiquetas');
-        const result = await res.json();
-        if (ativo && res.ok) setEtiquetas(result.data || []);
+        // As duas listas de uma vez: a da cliente e a de ocasião da venda.
+        const [resCliente, resVenda] = await Promise.all([
+          fetch('/api/etiquetas'),
+          fetch('/api/etiquetas-venda'),
+        ]);
+        const [dadosCliente, dadosVenda] = await Promise.all([
+          resCliente.json(),
+          resVenda.json(),
+        ]);
+        if (!ativo) return;
+        if (resCliente.ok) setEtiquetas(dadosCliente.data || []);
+        if (resVenda.ok) setEtiquetasVenda(dadosVenda.data || []);
       } catch {
         // Sem etiquetas a venda continua funcionando — o bloco some, só isso.
       }
@@ -221,7 +247,7 @@ export default function DashboardPage() {
     return () => {
       ativo = false;
     };
-  }, [showRegistroVendaModal, etiquetas.length]);
+  }, [showRegistroVendaModal, etiquetas.length, etiquetasVenda.length]);
 
   // Busca clientes já cadastradas enquanto ela digita o nome. É o que evita
   // duplicata: o caminho normal passa a ser reconhecer e escolher, em vez de
@@ -308,6 +334,40 @@ export default function DashboardPage() {
     setEtiquetasDaNova([]);
   };
 
+  // Cria a etiqueta de ocasião sem sair do modal, e já marca na venda.
+  //
+  // Sem isto a lista nasce vazia e o bloco inteiro fica invisível pra quem
+  // ainda não criou etiqueta nenhuma — ou seja, pra todo mundo no primeiro
+  // uso. Mandar a aluna em Clientes pra criar "Aniversário" no meio de uma
+  // venda é o tipo de desvio que faz o recurso não ser usado.
+  const criarOcasiao = async (nome: string, cor: string) => {
+    if (criandoOcasiao) return;
+    setCriandoOcasiao(nome);
+    try {
+      const res = await fetch('/api/etiquetas-venda', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, cor }),
+      });
+      const result = await res.json();
+      if (res.ok && result.data?.id) {
+        setEtiquetasVenda((atual) => [...atual, result.data]);
+        setOcasioesDaVenda((atual) => [...atual, result.data.id]);
+      }
+    } catch {
+      // Silencioso de propósito: a venda é o que importa aqui, e a etiqueta
+      // pode ser criada depois em qualquer outra venda.
+    } finally {
+      setCriandoOcasiao('');
+    }
+  };
+
+  const alternarOcasiaoDaVenda = (id: string) => {
+    setOcasioesDaVenda((atual) =>
+      atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id],
+    );
+  };
+
   const alternarEtiquetaDaNova = (id: string) => {
     setEtiquetasDaNova((atual) =>
       atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id],
@@ -346,6 +406,11 @@ export default function DashboardPage() {
     });
   };
 
+  // Sugestões de ocasião que ela ainda não criou.
+  const ocasioesSugeridas = ETIQUETAS_DE_VENDA_SUGERIDAS.filter(
+    (s) => !etiquetasVenda.some((e) => e.nome.toLowerCase() === s.nome.toLowerCase()),
+  );
+
   const totalVenda = itens.reduce((sum, item) => {
     const qtd = parseFloat(item.quantidade) || 0;
     const preco = parseFloat(item.preco_unitario) || 0;
@@ -366,6 +431,13 @@ export default function DashboardPage() {
       return;
     }
 
+    // Mesma função que a rota usa, pra tela e servidor não discordarem.
+    const dataInvalida = motivoDataDeVendaInvalida(dataVenda);
+    if (dataInvalida) {
+      setFormError(dataInvalida);
+      return;
+    }
+
     setSalvando(true);
     try {
       const res = await fetch('/api/vendas', {
@@ -374,6 +446,8 @@ export default function DashboardPage() {
         body: JSON.stringify({
           cliente_nome: clienteNome.trim(),
           customer_id: clienteId,
+          data: dataVenda,
+          tag_ids: ocasioesDaVenda.length ? ocasioesDaVenda : undefined,
           cliente_telefone: clienteTelefone.trim() || undefined,
           items: itensValidos.map((item) => ({
             produto_id: item.produto_id,
@@ -391,6 +465,12 @@ export default function DashboardPage() {
       }
 
       setShowRegistroVendaModal(false);
+      if (dataVenda !== hojeBrasil()) {
+        const [ano, mes, dia] = dataVenda.split('-');
+        setAvisoRetroativo(
+          `Venda de ${dia}/${mes}/${ano} registrada. Ela não aparece em "Vendas Registradas" (que mostra só as de hoje), mas já entrou no faturamento e nas metas daquele mês.`,
+        );
+      }
       // Recarrega e regrava o cache: sem isto, sair e voltar pro dashboard
       // mostraria o faturamento de antes da venda.
       await carregarMetricas();
@@ -414,6 +494,26 @@ export default function DashboardPage() {
             </Button>
           }
         />
+
+        {/* A agenda encontra a aluna aqui. Esta é a tela que ela abre todo dia
+            pra registrar venda; um lembrete que só existe em outra página
+            depende de alguém lembrar de ir olhar. */}
+        <LembretesDoDia />
+
+        {avisoRetroativo && (
+          <div className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4">
+            <p className="text-sm text-emerald-900">{avisoRetroativo}</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-emerald-900"
+              onClick={() => setAvisoRetroativo('')}
+            >
+              Ok
+            </Button>
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
@@ -591,24 +691,31 @@ export default function DashboardPage() {
                 <div className="grid gap-6 lg:grid-cols-2">
                   <Card>
                     <CardHeader>
-                      <CardTitle>Detalhamento das vendas por faixa de valor</CardTitle>
+                      <CardTitle>Vendas por faixa de preço do produto</CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        Em que preço seu catálogo mais gira. Conta produtos
+                        vendidos, não atendimentos.
+                      </p>
                     </CardHeader>
                     <CardContent className="overflow-x-auto">
                       <table className="w-full min-w-[440px] text-sm">
                         <thead>
                           <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                            <th className="px-2 py-2">Faixa</th>
-                            <th className="px-2 py-2">Qtd</th>
-                            <th className="px-2 py-2">% vendas</th>
+                            <th className="px-2 py-2">Faixa de preço</th>
+                            <th className="px-2 py-2">Produtos</th>
+                            <th className="px-2 py-2">% dos produtos</th>
                             <th className="px-2 py-2">Faturamento</th>
                             <th className="px-2 py-2">% faturamento</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {relatorio.faixas.map((f) => (
-                            <tr key={f.tipo} className="border-b last:border-0">
-                              <td className="px-2 py-2 font-medium" style={{ color: CORES_FAIXA[f.tipo] }}>
-                                {rotuloFaixa(f)}
+                          {relatorio.faixas.map((f, i) => (
+                            <tr key={f.rotulo} className="border-b last:border-0">
+                              <td
+                                className="px-2 py-2 font-medium"
+                                style={{ color: CORES_FAIXA[i % CORES_FAIXA.length] }}
+                              >
+                                {f.rotulo}
                               </td>
                               <td className="px-2 py-2">{f.quantidade}</td>
                               <td className="px-2 py-2">{f.percentualVendas.toFixed(0)}%</td>
@@ -618,9 +725,13 @@ export default function DashboardPage() {
                           ))}
                           <tr className="bg-muted font-bold">
                             <td className="px-2 py-2">Total</td>
-                            <td className="px-2 py-2">{relatorio.vendas_realizadas}</td>
+                            <td className="px-2 py-2">
+                              {relatorio.faixas.reduce((s, f) => s + f.quantidade, 0)}
+                            </td>
                             <td className="px-2 py-2">100%</td>
-                            <td className="px-2 py-2">{brl(relatorio.faturamento_mes)}</td>
+                            <td className="px-2 py-2">
+                              {brl(relatorio.faixas.reduce((s, f) => s + f.faturamento, 0))}
+                            </td>
                             <td className="px-2 py-2">100%</td>
                           </tr>
                         </tbody>
@@ -630,13 +741,13 @@ export default function DashboardPage() {
 
                   <Card>
                     <CardHeader>
-                      <CardTitle>Distribuição do faturamento por faixa</CardTitle>
+                      <CardTitle>Faturamento por faixa de preço</CardTitle>
                     </CardHeader>
                     <CardContent className="h-64">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
-                            data={relatorio.faixas.map((f) => ({ name: rotuloFaixa(f), value: f.faturamento }))}
+                            data={relatorio.faixas.map((f) => ({ name: f.rotulo, value: f.faturamento }))}
                             dataKey="value"
                             nameKey="name"
                             innerRadius={50}
@@ -644,8 +755,8 @@ export default function DashboardPage() {
                             isAnimationActive={false}
                             label={(d) => `${((d.percent ?? 0) * 100).toFixed(0)}%`}
                           >
-                            {relatorio.faixas.map((f) => (
-                              <Cell key={f.tipo} fill={CORES_FAIXA[f.tipo]} />
+                            {relatorio.faixas.map((f, i) => (
+                              <Cell key={f.rotulo} fill={CORES_FAIXA[i % CORES_FAIXA.length]} />
                             ))}
                           </Pie>
                           <Tooltip formatter={(v) => brl(Number(v))} />
@@ -845,12 +956,24 @@ export default function DashboardPage() {
                       </div>
                     )}
 
-                    {clienteNome.trim().length >= 2 && !buscandoCliente && (
+                    {/* Bloco de cadastro da cliente nova.
+
+                        Aparece a partir da PRIMEIRA letra e não some enquanto
+                        a busca roda. Antes exigia 2+ letras E a busca já
+                        terminada, então telefone e etiquetas ficavam
+                        invisíveis na maior parte da digitação — a Tania pediu
+                        "poder etiquetar no cadastro" justamente porque nunca
+                        viu esta parte, que já existia. Recurso que só aparece
+                        depois de um passo que ninguém sabe que precisa dar é
+                        recurso que não existe. */}
+                    {clienteNome.trim().length >= 1 && (
                       <div className="space-y-2 rounded-xl border border-dashed border-primary/40 bg-white/60 p-3">
                         <p className="text-xs text-muted-foreground">
-                          {sugestoesCliente.length > 0
-                            ? 'Não é nenhuma dessas? Cadastre uma nova:'
-                            : 'Nenhuma cliente com esse nome ainda.'}
+                          {buscandoCliente
+                            ? 'Procurando na sua base...'
+                            : sugestoesCliente.length > 0
+                              ? 'Não é nenhuma dessas? Cadastre uma nova:'
+                              : 'Nenhuma cliente com esse nome ainda.'}
                         </p>
                         <Input
                           inputMode="tel"
@@ -862,8 +985,13 @@ export default function DashboardPage() {
                         />
                         {etiquetas.length > 0 && (
                           <div className="space-y-1.5">
+                            {/* "Sobre a cliente" vs. "Ocasião da compra" (mais
+                                abaixo): a tela agora tem os dois tipos de
+                                etiqueta e precisa não confundi-los. Aqui é o
+                                que a pessoa É pra sempre; lá é o que esta
+                                compra FOI. */}
                             <p className="text-xs font-medium text-muted-foreground">
-                              Etiquetas (opcional)
+                              Sobre a cliente (opcional) — vale pra sempre
                             </p>
                             <div className="flex flex-wrap gap-1.5">
                               {etiquetas.map((etiqueta) => (
@@ -903,6 +1031,87 @@ export default function DashboardPage() {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Data da venda.
+
+                  Vem preenchida com hoje e fica logo abaixo da cliente, não
+                  escondida atrás de "opções avançadas": a Tania pediu
+                  justamente pra poder alimentar os meses anteriores, e um
+                  campo que ela não encontra é o mesmo que campo nenhum.
+
+                  O `max` impede escolher dia futuro já no seletor do
+                  navegador — venda futura é encomenda, que tem campo próprio. */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="data-venda">
+                  Data da venda
+                </label>
+                <Input
+                  id="data-venda"
+                  type="date"
+                  value={dataVenda}
+                  max={hojeBrasil()}
+                  onChange={(e) => setDataVenda(e.target.value)}
+                />
+                {dataVenda !== hojeBrasil() && (
+                  <p className="text-xs text-muted-foreground">
+                    Lançamento retroativo: esta venda entra no faturamento do mês
+                    em que aconteceu, não no de hoje.
+                  </p>
+                )}
+              </div>
+
+              {/* Ocasião DESTA venda.
+
+                  Fica junto da data e separado do bloco da cliente de
+                  propósito: são duas perguntas diferentes que a tela precisa
+                  não confundir. Ali em cima é o que a pessoa É ("Cliente
+                  VIP", vale sempre); aqui é o que a compra FOI ("Aniversário",
+                  vale pra esta venda e só).
+
+                  Era o que faltava pra Tania marcar "a venda do Rodrigo foi de
+                  aniversário" — informação que nenhuma data do sistema revela,
+                  porque o aniversário dele não cai em feriado nenhum. */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Ocasião da compra (opcional)</label>
+
+                {etiquetasVenda.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {etiquetasVenda.map((etiqueta) => (
+                      <EtiquetaToggle
+                        key={etiqueta.id}
+                        etiqueta={etiqueta}
+                        ativa={ocasioesDaVenda.includes(etiqueta.id)}
+                        onClick={() => alternarOcasiaoDaVenda(etiqueta.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Sugestões que ela ainda não tem: um toque cria e já marca.
+                    É o que impede o bloco de nascer vazio no primeiro uso. */}
+                {ocasioesSugeridas.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {etiquetasVenda.length === 0 && (
+                      <span className="text-xs text-muted-foreground">Toque pra criar:</span>
+                    )}
+                    {ocasioesSugeridas.map((sugestao) => (
+                      <button
+                        key={sugestao.nome}
+                        type="button"
+                        disabled={criandoOcasiao === sugestao.nome}
+                        onClick={() => criarOcasiao(sugestao.nome, sugestao.cor)}
+                        className="rounded-full border border-dashed border-muted-foreground/40 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                      >
+                        + {sugestao.nome}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  Depois dá pra filtrar em Clientes quem comprou em cada ocasião.
+                </p>
               </div>
 
               {catalogo.length > 0 ? (

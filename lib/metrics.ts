@@ -73,11 +73,38 @@ export function calcularMetricasVendas(
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+/**
+ * As faixas de preço do catálogo.
+ *
+ * São FIXAS de propósito, e essa é a correção principal aqui. Antes as faixas
+ * eram tercis — a lista era ordenada e cortada em três partes iguais —, então
+ * as fronteiras mudavam todo mês: em setembro o corte ficava em R$ 180, em
+ * outubro em R$ 310. A Tania não conseguia comparar um mês com o outro nem
+ * dizer a frase que ela queria dizer, que é "a maior parte das minhas vendas
+ * está abaixo de R$ 200".
+ *
+ * Com fronteira fixa a pergunta passa a ser respondível: a faixa 100–200 é a
+ * mesma em janeiro e em dezembro, e a resposta vira decisão de catálogo
+ * ("preciso de mais produto acima de R$ 300").
+ *
+ * `max: null` na última = "daqui pra cima".
+ */
+export const FAIXAS_DE_PRECO: { min: number; max: number | null }[] = [
+  { min: 0, max: 100 },
+  { min: 100, max: 200 },
+  { min: 200, max: 300 },
+  { min: 300, max: 500 },
+  { min: 500, max: null },
+];
+
 export interface FaixaValor {
-  tipo: 'unica' | 'baixa' | 'media' | 'alta';
   min: number;
-  max: number;
+  /** null na última faixa: "acima de X". */
+  max: number | null;
+  rotulo: string;
+  /** Quantos ITENS foram vendidos nesta faixa (2 cestas contam 2). */
   quantidade: number;
+  /** % dos itens vendidos no mês. */
   percentualVendas: number;
   faturamento: number;
   percentualFaturamento: number;
@@ -218,44 +245,72 @@ export interface RelatorioMensal {
   ranking_adicionais: ResumoCategoria;
 }
 
-function calcularFaixasValor(valores: number[], faturamentoTotal: number): FaixaValor[] {
-  if (valores.length === 0) return [];
+function rotuloDaFaixa(min: number, max: number | null): string {
+  if (max === null) return `Acima de ${brl(min)}`;
+  if (min === 0) return `Até ${brl(max)}`;
+  return `${brl(min)} a ${brl(max)}`;
+}
 
-  const ordenados = [...valores].sort((a, b) => a - b);
+/**
+ * Distribuição das vendas por faixa de PREÇO DO PRODUTO.
+ *
+ * A pergunta que a Tania faz é sobre o catálogo — "em que faixa de preço meus
+ * produtos estão concentrando a venda?" — e a resposta anterior não respondia
+ * isso, por dois motivos:
+ *
+ *  1. Classificava pela VENDA inteira (`faturamento_total`), que soma vários
+ *     produtos e ainda inclui o frete. Três cestas de R$ 150 numa venda só
+ *     entravam como uma venda de R$ 450, na faixa alta — quando o catálogo
+ *     dela é de R$ 150. O número dizia o contrário do que ela precisava ler.
+ *  2. Cortava em tercis, então a fronteira mudava todo mês (ver FAIXAS_DE_PRECO).
+ *
+ * Agora a unidade é o item: classifica pelo `preco_unitario` (o preço do
+ * produto) e pesa pela `quantidade`. Duas cestas de R$ 150 contam 2 na faixa
+ * 100–200, que é como ela conta de cabeça.
+ *
+ * Só entram itens do tipo 'produto'. Adicional tem ranking próprio e
+ * distorceria a faixa baixa: um cartão de R$ 15 não é "venda abaixo de R$ 200",
+ * é complemento de uma venda que já foi contada.
+ */
+function calcularFaixasValor(itens: VendaItemMetrica[]): FaixaValor[] {
+  const produtos = itens.filter((item) => (item.tipo ?? 'produto') === 'produto');
+  if (produtos.length === 0) return [];
 
-  if (ordenados.length < 3) {
-    return [
-      {
-        tipo: 'unica',
-        min: ordenados[0] ?? 0,
-        max: ordenados[ordenados.length - 1] ?? 0,
-        quantidade: ordenados.length,
-        percentualVendas: 100,
-        faturamento: faturamentoTotal,
-        percentualFaturamento: 100,
-      },
-    ];
-  }
+  const precoDoItem = (item: VendaItemMetrica): number => {
+    if (typeof item.preco_unitario === 'number') return item.preco_unitario;
+    // Sem preço unitário, deduz do subtotal — vale pro histórico antigo e pro
+    // painel admin, que consulta menos colunas.
+    if (typeof item.subtotal === 'number' && item.quantidade > 0) {
+      return item.subtotal / item.quantidade;
+    }
+    return 0;
+  };
 
-  const tamanhoBase = Math.floor(ordenados.length / 3);
-  const resto = ordenados.length % 3;
-  const tamanhos = [tamanhoBase, tamanhoBase, tamanhoBase + resto];
-  const tipos: FaixaValor['tipo'][] = ['baixa', 'media', 'alta'];
+  const totalItens = produtos.reduce((s, i) => s + i.quantidade, 0);
+  const totalFaturado = produtos.reduce((s, i) => s + faturamentoDoItem(i), 0);
 
-  let indice = 0;
-  return tamanhos.map((tamanho, i) => {
-    const grupo = ordenados.slice(indice, indice + tamanho);
-    indice += tamanho;
-    const faturamentoGrupo = grupo.reduce((sum, v) => sum + v, 0);
+  return FAIXAS_DE_PRECO.map(({ min, max }) => {
+    // Intervalo fechado embaixo e aberto em cima: um produto de exatamente
+    // R$ 200 é "de 200 a 300", e não cai nas duas faixas nem em nenhuma.
+    const daFaixa = produtos.filter((item) => {
+      const preco = precoDoItem(item);
+      return preco >= min && (max === null || preco < max);
+    });
+
+    const quantidade = daFaixa.reduce((s, i) => s + i.quantidade, 0);
+    const faturamento = daFaixa.reduce((s, i) => s + faturamentoDoItem(i), 0);
+
     return {
-      tipo: tipos[i] ?? 'unica',
-      min: grupo[0] ?? 0,
-      max: grupo[grupo.length - 1] ?? 0,
-      quantidade: grupo.length,
-      percentualVendas: parseFloat(((grupo.length / ordenados.length) * 100).toFixed(1)),
-      faturamento: faturamentoGrupo,
+      min,
+      max,
+      rotulo: rotuloDaFaixa(min, max),
+      quantidade,
+      percentualVendas: parseFloat(
+        (totalItens > 0 ? (quantidade / totalItens) * 100 : 0).toFixed(1),
+      ),
+      faturamento: parseFloat(faturamento.toFixed(2)),
       percentualFaturamento: parseFloat(
-        (faturamentoTotal > 0 ? (faturamentoGrupo / faturamentoTotal) * 100 : 0).toFixed(1),
+        (totalFaturado > 0 ? (faturamento / totalFaturado) * 100 : 0).toFixed(1),
       ),
     };
   });
@@ -318,19 +373,41 @@ export function calcularRelatorioMensal(
   const ranking_adicionais = montarCategoria('adicional');
 
   const valores = vendasMes.map((v) => v.faturamento_total);
-  const faixas = calcularFaixasValor(valores, faturamento_mes);
-  const faixaAlta = faixas.find((f) => f.tipo === 'alta') ?? faixas.find((f) => f.tipo === 'unica');
+  const faixas = calcularFaixasValor(todosItens);
+  // A faixa mais cara que teve venda — é ela que mostra até onde o catálogo
+  // dela chega hoje, e serve de referência pra projeção lá embaixo.
+  const faixaAlta = [...faixas].reverse().find((f) => f.quantidade > 0);
+  const faixasComVenda = faixas.filter((f) => f.quantidade > 0);
 
   const insights: string[] = [];
   if (vendas_realizadas > 0 && faixaAlta) {
+    // O insight que a Tania pediu: onde o volume se concentra. É a leitura
+    // de catálogo ("preciso trabalhar as faixas de cima"), não de transação.
+    const faixaCampea = [...faixasComVenda].sort((a, b) => b.quantidade - a.quantidade)[0];
+    if (faixaCampea) {
+      insights.push(
+        `${faixaCampea.percentualVendas.toFixed(0)}% dos produtos que você vendeu este mês estão na faixa "${faixaCampea.rotulo.toLowerCase()}" — é onde seu catálogo mais gira.`,
+      );
+    }
+
     insights.push(
-      `As vendas da faixa mais alta (${brl(faixaAlta.min)} a ${brl(faixaAlta.max)}) foram responsáveis por ${faixaAlta.percentualFaturamento.toFixed(0)}% do faturamento do mês.`,
+      `Os produtos da faixa mais alta com venda (${faixaAlta.rotulo.toLowerCase()}) responderam por ${faixaAlta.percentualFaturamento.toFixed(0)}% do faturamento em produtos.`,
     );
     if (faixaAlta.percentualVendas < faixaAlta.percentualFaturamento) {
       insights.push(
-        `Mesmo sendo apenas ${faixaAlta.percentualVendas.toFixed(0)}% das vendas, foram elas que puxaram o ticket médio pra cima.`,
+        `Mesmo sendo só ${faixaAlta.percentualVendas.toFixed(0)}% dos produtos vendidos, são eles que puxam seu ticket médio pra cima.`,
       );
     }
+
+    // Faixa sem nenhuma venda é espaço de catálogo vazio — a decisão que ela
+    // disse querer tomar com esse relatório.
+    const vazias = faixas.filter((f) => f.quantidade === 0 && f.min < (faixaAlta.max ?? Infinity));
+    if (vazias.length > 0) {
+      insights.push(
+        `Você não vendeu nada na faixa ${vazias.map((f) => f.rotulo.toLowerCase()).join(' nem ')}. Vale olhar se falta produto nesse preço ou se falta oferecer.`,
+      );
+    }
+
     const maiorVenda = Math.max(...valores);
     if (maiorVenda > 0 && faturamento_mes > 0) {
       const pctMaiorVenda = (maiorVenda / faturamento_mes) * 100;
@@ -379,11 +456,14 @@ export function calcularRelatorioMensal(
 
   const projecao_ticket_atual = calcularProjecao(metaMensal, ticket_medio_mes, vendas_realizadas);
 
+  // Projeção "e se eu vendesse mais do caro?": usa como referência a mediana
+  // das VENDAS que ficaram acima do ticket médio. Antes saía da faixa de
+  // valor, mas agora a faixa fala de preço de produto e a projeção fala de
+  // quantas vendas faltam — misturar as duas responderia à pergunta errada.
   let projecao_ticket_referencia: RelatorioMensal['projecao_ticket_referencia'] = null;
-  const faixaAltaReal = faixas.find((f) => f.tipo === 'alta');
-  if (faixaAltaReal) {
-    const valoresFaixaAlta = [...valores].sort((a, b) => a - b).slice(-faixaAltaReal.quantidade);
-    const valorReferencia = mediana(valoresFaixaAlta);
+  const vendasAcimaDaMedia = valores.filter((v) => v > ticket_medio_mes);
+  if (vendasAcimaDaMedia.length > 0) {
+    const valorReferencia = mediana(vendasAcimaDaMedia);
     const projecao = calcularProjecao(metaMensal, valorReferencia, vendas_realizadas);
     if (projecao) {
       projecao_ticket_referencia = { ...projecao, valorReferencia };
