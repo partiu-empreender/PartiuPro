@@ -102,10 +102,16 @@ const itemEstaVazio = (item: NovoItemForm) =>
 export default function DashboardPage() {
   const emCache = lerMemoria<{
     vendas: VendaDiaria[];
+    vendasDoMes?: VendaDiaria[];
     relatorio: RelatorioMensal | null;
     catalogo: ProdutoCatalogo[];
   }>('dashboard');
   const [vendas, setVendas] = useState<VendaDiaria[]>(emCache?.vendas ?? []);
+  // O mês inteiro fica na memória pra aba "Vendas do Dia" poder voltar em
+  // qualquer data sem nova ida ao servidor — a API já manda tudo, e com 3 a 40
+  // vendas por mês filtrar aqui custa nada.
+  const [vendasDoMes, setVendasDoMes] = useState<VendaDiaria[]>(emCache?.vendasDoMes ?? []);
+  const [diaEscolhido, setDiaEscolhido] = useState(hojeBrasil());
   const [relatorio, setRelatorio] = useState<RelatorioMensal | null>(emCache?.relatorio ?? null);
   const [catalogo, setCatalogo] = useState<ProdutoCatalogo[]>(emCache?.catalogo ?? []);
   const [loading, setLoading] = useState(emCache === undefined);
@@ -146,6 +152,15 @@ export default function DashboardPage() {
   // HOJE: sem este aviso, lançar julho salvaria certo e sumiria da tela, e a
   // aluna concluiria que falhou — lançando tudo de novo e duplicando a venda.
   const [avisoRetroativo, setAvisoRetroativo] = useState('');
+  // Registro de atendimento direto do cartão do Raio-X, sem ir até a aba
+  // Atendimentos. É o numero que sustenta conversão e PA: enquanto ficar em
+  // zero, os dois indicadores aparecem como "—" e o relatório do mês fica
+  // manco justamente na parte que a Tania mais usa.
+  const [atendimentoAberto, setAtendimentoAberto] = useState(false);
+  const [atendimentoData, setAtendimentoData] = useState(hojeBrasil());
+  const [atendimentoQtd, setAtendimentoQtd] = useState('');
+  const [atendimentoErro, setAtendimentoErro] = useState('');
+  const [salvandoAtendimento, setSalvandoAtendimento] = useState(false);
 
   const carregarMetricas = async () => {
     try {
@@ -166,6 +181,7 @@ export default function DashboardPage() {
       if (!resVendas.ok) throw new Error(result.error || 'Erro ao carregar vendas');
 
       setVendas(result.vendas || []);
+      setVendasDoMes(result.vendas_mes || []);
       setCatalogo(resProdutos.ok ? produtosResult.data || [] : []);
 
       // Number() porque coluna NUMERIC pode chegar como texto — e aí a
@@ -186,6 +202,7 @@ export default function DashboardPage() {
 
       gravarMemoria('dashboard', {
         vendas: result.vendas || [],
+        vendasDoMes: result.vendas_mes || [],
         relatorio: relatorioDoMes,
         catalogo: resProdutos.ok ? produtosResult.data || [] : [],
       });
@@ -204,6 +221,67 @@ export default function DashboardPage() {
     const interval = setInterval(carregarMetricas, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Abre o diálogo já com o número que existe hoje.
+  //
+  // A API faz UPSERT por data: o que for salvo SUBSTITUI o valor do dia, não
+  // soma. Abrir em branco faria ela digitar "5" achando que somava aos 12 que
+  // já estavam lá — e perderia sete atendimentos sem aviso nenhum.
+  const abrirAtendimento = async () => {
+    setAtendimentoData(hojeBrasil());
+    setAtendimentoQtd('');
+    setAtendimentoErro('');
+    setAtendimentoAberto(true);
+    try {
+      const res = await fetch('/api/atendimentos');
+      const result = await res.json();
+      if (res.ok) {
+        const doDia = (result.data || []).find(
+          (a: { data: string }) => a.data === hojeBrasil(),
+        );
+        if (doDia) setAtendimentoQtd(String(doDia.pessoas_atendidas ?? ''));
+      }
+    } catch {
+      // Sem o valor atual ela ainda consegue registrar — só começa em branco.
+    }
+  };
+
+  const salvarAtendimento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAtendimentoErro('');
+
+    const qtd = Number(atendimentoQtd);
+    if (!Number.isInteger(qtd) || qtd < 0) {
+      setAtendimentoErro('Informe um número inteiro de pessoas atendidas.');
+      return;
+    }
+    // Mesma regra da venda: atendimento futuro não existe.
+    if (atendimentoData > hojeBrasil()) {
+      setAtendimentoErro('Não dá pra registrar atendimento com data futura.');
+      return;
+    }
+
+    setSalvandoAtendimento(true);
+    try {
+      const res = await fetch('/api/atendimentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pessoas_atendidas: qtd, data: atendimentoData }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setAtendimentoErro(result.error || 'Erro ao registrar atendimento.');
+        return;
+      }
+      setAtendimentoAberto(false);
+      // Recarrega: conversão e PA dependem deste número e mudam na hora.
+      await carregarMetricas();
+    } catch {
+      setAtendimentoErro('Erro ao registrar atendimento. Tente novamente.');
+    } finally {
+      setSalvandoAtendimento(false);
+    }
+  };
 
   const abrirModal = () => {
     setClienteNome('');
@@ -406,6 +484,15 @@ export default function DashboardPage() {
     });
   };
 
+  // As vendas do dia que ela escolheu no seletor. Cai de volta em `vendas`
+  // (hoje, vindo da API) enquanto o mês ainda não carregou.
+  const vendasDoDiaEscolhido =
+    vendasDoMes.length > 0
+      ? vendasDoMes.filter((v) => v.data === diaEscolhido)
+      : diaEscolhido === hojeBrasil()
+        ? vendas
+        : [];
+
   // Sugestões de ocasião que ela ainda não criou.
   const ocasioesSugeridas = ETIQUETAS_DE_VENDA_SUGERIDAS.filter(
     (s) => !etiquetasVenda.some((e) => e.nome.toLowerCase() === s.nome.toLowerCase()),
@@ -468,8 +555,11 @@ export default function DashboardPage() {
       if (dataVenda !== hojeBrasil()) {
         const [ano, mes, dia] = dataVenda.split('-');
         setAvisoRetroativo(
-          `Venda de ${dia}/${mes}/${ano} registrada. Ela não aparece em "Vendas Registradas" (que mostra só as de hoje), mas já entrou no faturamento e nas metas daquele mês.`,
+          `Venda de ${dia}/${mes}/${ano} registrada — já entrou no faturamento e nas metas daquele mês.`,
         );
+        // Leva o seletor pro dia da venda: em vez de avisar que ela nao
+        // aparece na lista, a lista passa a mostrá-la.
+        setDiaEscolhido(dataVenda);
       }
       // Recarrega e regrava o cache: sem isto, sair e voltar pro dashboard
       // mostraria o faturamento de antes da venda.
@@ -538,7 +628,16 @@ export default function DashboardPage() {
                     { title: 'Faturamento bruto', value: brl(relatorio.faturamento_mes), icon: DollarSign, color: 'text-blue-600' },
                     { title: 'Produtos vendidos', value: String(relatorio.produtos_vendidos), icon: ShoppingBag, color: 'text-green-600' },
                     { title: 'Ticket médio', value: brl(relatorio.ticket_medio_mes), icon: Package, color: 'text-purple-600' },
-                    { title: 'Atendimentos realizados', value: String(relatorio.atendimentos_mes), icon: Users, color: 'text-orange-600' },
+                    {
+                      title: 'Atendimentos realizados',
+                      value: String(relatorio.atendimentos_mes),
+                      icon: Users,
+                      color: 'text-orange-600',
+                      // O único cartão clicável: é o único número que ela
+                      // alimenta à mão. Os outros cinco saem das vendas.
+                      onClick: abrirAtendimento,
+                      chamada: relatorio.atendimentos_mes > 0 ? 'Atualizar' : 'Registrar',
+                    },
                     { title: 'Vendas realizadas', value: String(relatorio.vendas_realizadas), icon: TrendingUp, color: 'text-emerald-600' },
                     {
                       title: 'Conversão geral',
@@ -553,6 +652,8 @@ export default function DashboardPage() {
                       valor={c.value}
                       icone={c.icon}
                       cor={c.color}
+                      onClick={'onClick' in c ? c.onClick : undefined}
+                      chamada={'chamada' in c ? c.chamada : undefined}
                     />
                   ))}
                 </div>
@@ -837,16 +938,45 @@ export default function DashboardPage() {
 
           <TabsContent value="hoje" className="space-y-4 mt-4">
             <Card>
-              <CardHeader>
-                <CardTitle>Vendas Registradas</CardTitle>
-                <CardDescription>Todas as transações de hoje</CardDescription>
+              <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1.5">
+                  <CardTitle>Vendas Registradas</CardTitle>
+                  <CardDescription>
+                    {diaEscolhido === hojeBrasil()
+                      ? 'Todas as transações de hoje'
+                      : `Transações de ${diaEscolhido.split('-').reverse().join('/')}`}
+                  </CardDescription>
+                </div>
+                {/* Seletor de dia. Filtra em memória: a API já manda o mês
+                    inteiro, então voltar a um dia anterior não custa requisição
+                    nenhuma. Sem isto, uma venda lançada com data retroativa
+                    nunca podia ser conferida na tela. */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    aria-label="Ver vendas de outro dia"
+                    value={diaEscolhido}
+                    max={hojeBrasil()}
+                    onChange={(e) => setDiaEscolhido(e.target.value || hojeBrasil())}
+                    className="h-9 w-auto"
+                  />
+                  {diaEscolhido !== hojeBrasil() && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDiaEscolhido(hojeBrasil())}
+                    >
+                      Hoje
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   {loading ? (
                     <p className="text-center py-8 text-muted-foreground">Carregando...</p>
-                  ) : vendas.length > 0 ? (
-                    vendas.map((venda) => (
+                  ) : vendasDoDiaEscolhido.length > 0 ? (
+                    vendasDoDiaEscolhido.map((venda) => (
                       <div
                         key={venda.id}
                         className="flex items-center justify-between gap-4 rounded-2xl border border-white/60 bg-white/50 p-4 transition-colors hover:bg-accent"
@@ -864,7 +994,9 @@ export default function DashboardPage() {
                     ))
                   ) : (
                     <p className="text-center py-8 text-muted-foreground">
-                      Nenhuma venda registrada hoje
+                      {diaEscolhido === hojeBrasil()
+                        ? 'Nenhuma venda registrada hoje'
+                        : `Nenhuma venda em ${diaEscolhido.split('-').reverse().join('/')}`}
                     </p>
                   )}
                 </div>
@@ -1221,6 +1353,78 @@ export default function DashboardPage() {
                 </Button>
               </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registro de atendimento, aberto pelo cartão do Raio-X.
+
+          A aba Atendimentos continua existindo; isto é o atalho pra quem está
+          olhando o relatório e vê o zero. Sem ele, "conversão" e "PA" ficam em
+          "—" e a aluna precisa sair da tela pra destravar dois indicadores. */}
+      <Dialog open={atendimentoAberto} onOpenChange={setAtendimentoAberto}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Atendimentos do dia</DialogTitle>
+            <DialogDescription>
+              Quantas pessoas você atendeu — inclusive quem não comprou. É esse número
+              que revela sua taxa de conversão.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={salvarAtendimento} className="space-y-4">
+            {atendimentoErro && (
+              <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+                {atendimentoErro}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="atendimento-data">
+                Dia
+              </label>
+              <Input
+                id="atendimento-data"
+                type="date"
+                value={atendimentoData}
+                max={hojeBrasil()}
+                onChange={(e) => setAtendimentoData(e.target.value || hojeBrasil())}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="atendimento-qtd">
+                Pessoas atendidas
+              </label>
+              <Input
+                id="atendimento-qtd"
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                placeholder="0"
+                value={atendimentoQtd}
+                onChange={(e) => setAtendimentoQtd(e.target.value)}
+              />
+              {/* O upsert SUBSTITUI o valor do dia. Dizer isso evita que ela
+                  digite 5 achando que soma aos 12 que ja estavam la. */}
+              <p className="text-xs text-muted-foreground">
+                Este é o total do dia — o valor digitado substitui o que já estava
+                registrado, não soma.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAtendimentoAberto(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={salvandoAtendimento}>
+                {salvandoAtendimento ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </>
