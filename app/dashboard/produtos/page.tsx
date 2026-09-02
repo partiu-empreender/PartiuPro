@@ -30,6 +30,9 @@ interface Produto {
 const brl = (n: number) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+// `singular` existe pra ser usado — inclusive no seletor de tipo. Cortar o "s"
+// do plural parece equivalente e não é: "Adicionais" vira "Adicionai".
+// Português tem plural em -is, e regex não sabe disso.
 const ROTULOS: Record<TipoProduto, { singular: string; plural: string; ajuda: string }> = {
   produto: {
     singular: 'produto',
@@ -269,7 +272,8 @@ export default function ProdutosPage() {
                         : 'rounded-full border border-white/60 bg-white/60 px-4 py-2 text-sm font-medium text-muted-foreground backdrop-blur-md hover:bg-accent'
                     }
                   >
-                    {ROTULOS[t].plural.replace(/s$/, '')}
+                    {ROTULOS[t].singular.charAt(0).toUpperCase() +
+                      ROTULOS[t].singular.slice(1)}
                   </button>
                 ))}
               </div>
