@@ -25,8 +25,19 @@ import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
+import { aplicarMascaraMoeda, formatarMoeda, parsearMoeda } from '@/lib/moeda';
 
-const META_PADRAO = 10000;
+/**
+ * Valor que aparece já preenchido no campo quando ela vai definir a primeira
+ * meta. É SUGESTÃO, nada mais.
+ *
+ * Antes ele também era usado como meta na falta de uma salva — e aí a tela
+ * anunciava "META MENSAL R$ 10.000 · 31% atingido" pra quem nunca tinha
+ * definido meta alguma. A aluna via um número inventado com cara de dado, e o
+ * Dashboard (que só olha o que está salvo) dizia "defina uma meta", parecendo
+ * que um dos dois estava quebrado. Quem estava errada era esta tela.
+ */
+const SUGESTAO_DE_META = 10000;
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -55,7 +66,9 @@ export default function MetasPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Erro ao carregar metas');
       const metas: Record<number, number> = {};
-      for (const m of result.data || []) metas[m.mes] = m.meta_mensal;
+      // Number() porque coluna NUMERIC pode chegar como string, e aí toda
+      // comparação e soma daqui pra frente passaria a ser de texto.
+      for (const m of result.data || []) metas[m.mes] = Number(m.meta_mensal) || 0;
       setMetasSalvas(metas);
       setFaturamentoPorMes(result.faturamentoPorMes || {});
     } catch (error) {
@@ -72,13 +85,13 @@ export default function MetasPage() {
   const linhas = useMemo(() => {
     return MESES.map((nome, i) => {
       const mes = i + 1;
-      const metaSalva = metasSalvas[mes] || 0;
       return {
         nome,
         curto: nome.slice(0, 3),
         mes,
-        metaSalva,
-        meta: metaSalva > 0 ? metaSalva : META_PADRAO,
+        // Zero quer dizer "não definida", e a tela precisa dizer isso em vez
+        // de preencher o buraco com um número bonito.
+        meta: metasSalvas[mes] || 0,
         faturamento: faturamentoPorMes[mes] || 0,
       };
     });
@@ -88,14 +101,26 @@ export default function MetasPage() {
     nome: '',
     curto: '',
     mes: mesSelecionado,
-    metaSalva: 0,
-    meta: META_PADRAO,
+    meta: 0,
     faturamento: 0,
   };
-  const percentual = atual.meta > 0 ? (atual.faturamento / atual.meta) * 100 : 0;
+  const temMeta = atual.meta > 0;
+  const percentual = temMeta ? (atual.faturamento / atual.meta) * 100 : 0;
   const falta = Math.max(0, atual.meta - atual.faturamento);
-  const totalMeta = linhas.reduce((t, l) => t + l.meta, 0);
+  const mesesComMeta = linhas.filter((l) => l.meta > 0);
+  const totalMeta = mesesComMeta.reduce((t, l) => t + l.meta, 0);
   const totalFat = linhas.reduce((t, l) => t + l.faturamento, 0);
+
+  // O que o campo de meta virou de fato, pra mostrar na tela antes de gravar.
+  const valorInterpretado = parsearMoeda(valor);
+
+  // Mês que já passou. A API sempre aceitou meta retroativa — o upsert tem
+  // chave (workspace, mês, ano) e nunca olhou o calendário. Só a tela não
+  // dizia isso em lugar nenhum, então a Tania pediu como se fosse recurso que
+  // faltava. Falta era o aviso, não a função.
+  const mesJaEncerrado =
+    ano < hojeData.getFullYear() ||
+    (ano === hojeData.getFullYear() && mesSelecionado < hojeData.getMonth() + 1);
 
   const crescimento = (i: number) => {
     if (i === 0) return null;
@@ -106,7 +131,7 @@ export default function MetasPage() {
   };
 
   const abrir = () => {
-    setValor(String(atual.metaSalva || META_PADRAO));
+    setValor(aplicarMascaraMoeda(String(atual.meta || SUGESTAO_DE_META)));
     setErro('');
     setAberto(true);
   };
@@ -114,8 +139,10 @@ export default function MetasPage() {
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro('');
-    const n = Number(valor);
-    if (!Number.isFinite(n) || n < 0) {
+    // parsearMoeda e não Number(): Number('100.000') devolve 100, que era
+    // meia dúzia de zeros a menos na meta do mês.
+    const n = parsearMoeda(valor);
+    if (n === null) {
       setErro('Informe um valor numérico válido.');
       return;
     }
@@ -145,7 +172,7 @@ export default function MetasPage() {
         description={`Planejamento anual de ${ano}`}
         action={
           <Button size="lg" onClick={abrir}>
-            <Pencil className="mr-2 h-4 w-4" /> Editar meta
+            <Pencil className="mr-2 h-4 w-4" /> Editar meta de {atual.nome}
           </Button>
         }
       />
@@ -186,7 +213,7 @@ export default function MetasPage() {
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Meta mensal</p>
-                  <p className="text-2xl font-bold">{brl(atual.meta)}</p>
+                  <p className="text-2xl font-bold">{temMeta ? brl(atual.meta) : '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Faturamento até agora</p>
@@ -194,22 +221,41 @@ export default function MetasPage() {
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">% atingido</p>
-                  <p className="text-2xl font-bold">{percentual.toFixed(0)}%</p>
+                  <p className="text-2xl font-bold">{temMeta ? `${percentual.toFixed(0)}%` : '—'}</p>
                 </div>
               </div>
-              <div className="h-4 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-primary transition-all"
-                  style={{ width: `${Math.min(100, percentual)}%` }}
-                />
-              </div>
-              <p className="text-sm font-semibold text-muted-foreground">
-                {falta === 0 ? (
-                  <span className="text-primary">Meta batida! 🎉</span>
-                ) : (
-                  <>Falta para bater a meta: <strong>{brl(falta)}</strong></>
-                )}
-              </p>
+
+              {temMeta ? (
+                <>
+                  <div className="h-4 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${Math.min(100, percentual)}%` }}
+                    />
+                  </div>
+                  <p className="text-sm font-semibold text-muted-foreground">
+                    {falta === 0 ? (
+                      <span className="text-primary">Meta batida! 🎉</span>
+                    ) : (
+                      <>Falta para bater a meta: <strong>{brl(falta)}</strong></>
+                    )}
+                  </p>
+                </>
+              ) : (
+                /* Sem meta definida não há barra pra encher nem porcentagem
+                   pra mostrar. Preencher esse buraco com um valor de exemplo
+                   foi o que fez a tela anunciar "R$ 10.000 · 31% atingido" pra
+                   quem nunca definiu meta nenhuma. */
+                <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                  <p className="text-sm">
+                    Você ainda não definiu a meta de <strong>{atual.nome.toLowerCase()}</strong>. Sem
+                    ela não dá pra dizer quanto falta — e o Dashboard fica sem o acompanhamento.
+                  </p>
+                  <Button onClick={abrir}>
+                    <Pencil className="mr-2 h-4 w-4" /> Definir a meta de {atual.nome}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -230,16 +276,31 @@ export default function MetasPage() {
                 </thead>
                 <tbody>
                   {linhas.map((l, i) => {
-                    const pct = l.meta > 0 ? (l.faturamento / l.meta) * 100 : 0;
+                    const temMetaNoMes = l.meta > 0;
+                    const pct = temMetaNoMes ? (l.faturamento / l.meta) * 100 : 0;
                     const cres = crescimento(i);
-                    const bateu = l.faturamento >= l.meta;
+                    const bateu = temMetaNoMes && l.faturamento >= l.meta;
                     return (
                       <tr key={l.mes} className={cn('border-b last:border-0', l.mes === mesSelecionado && 'bg-accent/50')}>
                         <td className="px-4 py-3 font-medium">{l.nome}</td>
-                        <td className="px-4 py-3">{brl(l.meta)}</td>
+                        {/* Mês sem meta mostra travessão. Com o valor de
+                            exemplo no lugar, a coluna inteira marcava "0%" em
+                            vermelho contra uma meta que ninguém tinha posto. */}
+                        <td className="px-4 py-3">
+                          {temMetaNoMes ? brl(l.meta) : <span className="text-muted-foreground">—</span>}
+                        </td>
                         <td className="px-4 py-3">{brl(l.faturamento)}</td>
-                        <td className={cn('px-4 py-3 font-bold', bateu ? 'text-emerald-600' : 'text-destructive')}>
-                          {pct.toFixed(0)}%
+                        <td
+                          className={cn(
+                            'px-4 py-3 font-bold',
+                            !temMetaNoMes
+                              ? 'text-muted-foreground'
+                              : bateu
+                                ? 'text-emerald-600'
+                                : 'text-destructive',
+                          )}
+                        >
+                          {temMetaNoMes ? `${pct.toFixed(0)}%` : '—'}
                         </td>
                         <td className={cn('px-4 py-3 font-semibold', cres === null ? 'text-muted-foreground' : cres >= 0 ? 'text-emerald-600' : 'text-destructive')}>
                           {cres === null ? '—' : `${cres >= 0 ? '+' : ''}${cres.toFixed(0)}%`}
@@ -248,10 +309,23 @@ export default function MetasPage() {
                     );
                   })}
                   <tr className="bg-muted font-bold">
-                    <td className="px-4 py-3">Total</td>
-                    <td className="px-4 py-3">{brl(totalMeta)}</td>
+                    <td className="px-4 py-3">
+                      Total
+                      {/* Somar só os meses que têm meta e dizer quantos são:
+                          senão o total parece o do ano inteiro. */}
+                      {mesesComMeta.length > 0 && mesesComMeta.length < 12 && (
+                        <span className="ml-1 text-xs font-normal text-muted-foreground">
+                          ({mesesComMeta.length} {mesesComMeta.length === 1 ? 'mês' : 'meses'} com meta)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {totalMeta > 0 ? brl(totalMeta) : <span className="text-muted-foreground">—</span>}
+                    </td>
                     <td className="px-4 py-3">{brl(totalFat)}</td>
-                    <td className="px-4 py-3">{totalMeta > 0 ? ((totalFat / totalMeta) * 100).toFixed(0) : 0}%</td>
+                    <td className="px-4 py-3">
+                      {totalMeta > 0 ? `${((totalFat / totalMeta) * 100).toFixed(0)}%` : '—'}
+                    </td>
                     <td className="px-4 py-3">—</td>
                   </tr>
                 </tbody>
@@ -284,6 +358,12 @@ export default function MetasPage() {
             <DialogTitle>Meta de {atual.nome} {ano}</DialogTitle>
           </DialogHeader>
           <form onSubmit={salvar} className="space-y-4">
+            {mesJaEncerrado && (
+              <p className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                Mês já encerrado. Registrar a meta dele serve pra comparar com o
+                que você faturou de verdade — o faturamento não muda.
+              </p>
+            )}
             {erro && (
               <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
                 {erro}
@@ -291,14 +371,34 @@ export default function MetasPage() {
             )}
             <div className="space-y-2">
               <Label htmlFor="meta">Meta mensal (R$)</Label>
+              {/*
+                Campo de TEXTO, não type="number".
+
+                Era <input type="number" step={100}> abrindo com 10.000, e o
+                HTML valida o passo a partir do valor inicial: digitar 100.000
+                caía fora da grade e o navegador "corrigia" pro múltiplo mais
+                próximo — 99.700. Ela digitava cem mil, o sistema gravava
+                noventa e nove mil e setecentos, calado.
+
+                Sem step não há grade pra desalinhar, e a máscara mostra o
+                agrupamento de milhar enquanto ela digita.
+              */}
               <Input
                 id="meta"
-                type="number"
-                min={0}
-                step={100}
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="100.000"
                 value={valor}
-                onChange={(e) => setValor(e.target.value)}
+                onChange={(e) => setValor(aplicarMascaraMoeda(e.target.value))}
               />
+              {/* O valor interpretado, à vista antes de salvar. Se algum dia a
+                  leitura errar de novo, ela vê aqui em vez de descobrir depois
+                  no relatório. */}
+              {valorInterpretado !== null && (
+                <p className="text-xs text-muted-foreground">
+                  Salvando <strong>{formatarMoeda(valorInterpretado)}</strong>
+                </p>
+              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAberto(false)}>
