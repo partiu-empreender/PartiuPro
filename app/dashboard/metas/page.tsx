@@ -361,7 +361,15 @@ export default function MetasPage() {
             {mesJaEncerrado && (
               <p className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
                 Mês já encerrado. Registrar a meta dele serve pra comparar com o
-                que você faturou de verdade — o faturamento não muda.
+                que você faturou de verdade — o faturamento não muda.{' '}
+                {/* O faturamento não muda AQUI, mas o Histórico é onde ela
+                    informa o de um mês que o sistema não acompanhou. Sem este
+                    link, a frase acima parece dizer que não há jeito. */}
+                Faturou nesse mês antes de usar o sistema?{' '}
+                <a href="/dashboard/historico" className="font-medium text-primary hover:underline">
+                  Preencha no Histórico
+                </a>
+                .
               </p>
             )}
             {erro && (

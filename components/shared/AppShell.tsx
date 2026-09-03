@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   BellRing,
+  CalendarRange,
   HeartHandshake,
   LayoutDashboard,
   LogOut,
@@ -36,6 +37,7 @@ const LINKS = [
   { href: '/dashboard/produtos', label: 'Catálogo', icon: Package },
   { href: '/dashboard/atendimentos', label: 'Atendimentos', icon: HeartHandshake },
   { href: '/dashboard/metas', label: 'Metas', icon: Target },
+  { href: '/dashboard/historico', label: 'Histórico', icon: CalendarRange },
 ];
 
 const LINK_ADMIN = { href: '/admin', label: 'Admin', icon: ShieldCheck };
