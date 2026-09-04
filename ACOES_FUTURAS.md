@@ -47,3 +47,97 @@ Ver [`PLANO_MIGRACAO_LOVABLE.md`](./PLANO_MIGRACAO_LOVABLE.md) — plano complet
 - Regra de k-mínimo (n≥5) antes de exibir agregados como anonimizados.
 - Job automático de retenção/expurgo (30 dias cliente final / 90 dias conta / 6 meses logs).
 - Ver o documento completo "Fluxo de Aviso LGPD — Partiu PRO v5" (compartilhado pela Tania em 2026-08-26) pra detalhes de cada item.
+
+## CRM: Lead, Cliente e Presenteado — a conversar com a Tania
+
+Levantado a partir de feedbacks reais de alunas em **04/09/2026** (grupo de
+WhatsApp). Adiado de propósito: é o maior pedido em aberto, muda o modelo de
+dados do CRM e precisa de validação com a Tania antes de virar código. O que
+foi entregue na mesma rodada foi só o que não dependia dessa decisão (excluir
+venda e ver o Raio-X de meses anteriores).
+
+### O que as alunas pediram, na palavra delas
+
+> "cadastro do cliente com mais informações"
+
+> "cadastro dos atendimentos com mais informações (Nome | Contato | Origem
+> (Anúncio, Instagram, Google, Indicação etc.)"
+
+> "incluir cadastro do pedido (pedido/venda é diferente de cliente)"
+
+> "O ideal é que o cadastro do 'cliente' começasse como Lead/Prospect com menos
+> informações — só do atendimento — e pudesse evoluir para 'Cliente' quando
+> houvesse um pedido/venda. Assim teríamos um cadastro CRM com clientes (já
+> compraram) e leads (ainda não compraram). Além dos dados dos Presenteados,
+> que viram Leads e podem virar Clientes."
+
+> "Seria bom na hora de cadastrar os pedidos, pesquisar nos dados dos Leads,
+> Clientes e Presenteados para trazer essas informações automáticas e preencher
+> o restante."
+
+> "Se houvesse uma forma de 'customizar', seria fantástico. Assim cada empresa
+> poderia ter um cadastro mais ou menos completo, incluindo campos."
+
+### O formulário que uma aluna já usa hoje (Google Forms)
+
+É a referência concreta que ela mandou — vale como espelho do que o sistema
+precisaria cobrir para substituir a planilha dela.
+
+**Dados do cliente:** nome · telefone · e-mail · endereço · complemento ·
+bairro · cidade · aniversário · etiquetas · contexto · como conheceu a empresa
+(Instagram / Google / Indicação / Outros)
+
+**Dados do pedido:** carimbo de data/hora · nome do cliente · contato do
+cliente · nome do produto no catálogo · **nome da(o) presenteada(o)** ·
+**contato da(o) presenteada(o)** · **endereço da(o) presenteada(o)** ·
+complemento · bairro · cidade · ocasião do presente · data da entrega · período
+da entrega · mensagem curta do cartão · valor dos presentes · valor dos
+adicionais · valor do frete · pagamento realizado · como conheceu a empresa
+
+**Dados internos:** código do pedido · número do pedido no mês · pediu feedback
+no Google ao cliente? · foi feito? · pediu feedback ao presenteado? · foi feito?
+
+### O que o banco já tem (e não custa nada expor)
+
+Antes de criar coisa nova, vale saber que boa parte já existe e só não aparece
+na tela:
+
+- `customers` já tem **`email`**, **`date_of_birth`** (aniversário) e
+  **`how_knew`** (como conheceu) — e `app/api/clientes/route.ts` já aceita os
+  três. Só o formulário não os oferece.
+- `vendas_diarias` já tem **`delivery_date`**, **`delivery_period`**,
+  **`shipping_cost`**, **`bairro`** e **`notes`** — nenhum aparece no formulário
+  de venda.
+- `customers.notes` é o "contexto", e as etiquetas de cliente e de ocasião já
+  existem (migrations 007 e 010).
+
+Ou seja: **expor os campos existentes já atende uma parte relevante do pedido
+sem migration nenhuma.** Foi a opção oferecida e adiada junto com o resto — vale
+retomar como primeiro passo quando o assunto voltar, porque é barato.
+
+### O que exigiria decisão de modelo
+
+1. **Lead vs. Cliente.** Hoje `customers` não tem status: toda pessoa cadastrada
+   é igual. Distinguir quem já comprou de quem só foi atendida mexe nos filtros
+   existentes (`lib/filtros-clientes.ts`) e no "Nunca compraram", que hoje já faz
+   parte desse trabalho por outro caminho (`total_orders = 0`). **Pergunta pra
+   Tania:** o filtro atual já resolve, ou o status explícito muda como ela
+   trabalha?
+2. **Presenteado.** Não existe nada hoje. Seria tabela nova ou colunas na venda —
+   e a decisão importa porque a mesma pessoa presenteada pode virar cliente
+   depois, que é justamente o que a aluna descreveu.
+3. **Campos customizáveis.** É o item mais caro de todos: vira um construtor de
+   formulários, com armazenamento dinâmico e telas que se adaptam. Recomendação:
+   deixar por último, e só depois de ver se os campos fixos não bastam.
+
+### Cuidado de LGPD que este pedido levanta
+
+A Política de Privacidade atual ([lib/legal.ts](lib/legal.ts), item 5) orienta a
+aluna a **registrar o mínimo** sobre clientes finais — "apelido ou primeiro nome
+são suficientes. Não registre CPF, telefone, e-mail ou endereço de clientes".
+
+O pedido vai na direção oposta: endereço completo do presenteado, contato, etc.
+Não é impeditivo — é dado legítimo para operar uma entrega —, mas **a política
+precisa ser revista junto** se esses campos entrarem, senão o sistema passa a
+pedir exatamente o que o próprio texto legal diz para não registrar. Envolver a
+Tania e quem redigiu o documento.
