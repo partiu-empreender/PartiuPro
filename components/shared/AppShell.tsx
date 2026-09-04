@@ -20,6 +20,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import Fundo from '@/components/shared/Fundo';
+import LogoPartiu from '@/components/shared/LogoPartiu';
 import { garantirDono, limparMemoria } from '@/lib/cache-memoria';
 
 interface AppShellProps {
@@ -145,11 +146,17 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
         <Link
           href="/dashboard"
           className="flex h-9 shrink-0 items-center justify-center pr-4"
-          aria-label="Partiu PRO"
+          aria-label="Partiu Empreender"
         >
-          <span aria-hidden className="marca marca-clara whitespace-nowrap text-lg leading-none">
-            <span className={soAoFechar}>PP</span>
-            <span className={soAoAbrirInline}>Partiu PRO</span>
+          {/* Recolhido continua sendo a inicial: a logo tem proporção ~15:1 e
+              na faixa estreita ela sairia com dois milímetros de altura. */}
+          <span aria-hidden className={cn('marca marca-clara text-lg leading-none', soAoFechar)}>
+            PP
+          </span>
+          {/* Aberto, a logo — em lavanda claro, o mesmo tom que o texto usava
+              sobre o roxo do menu (currentColor faz o resto). */}
+          <span className={cn('w-full', soAoAbrir)}>
+            <LogoPartiu className="text-[hsl(264_80%_88%)]" />
           </span>
         </Link>
 
@@ -323,9 +330,8 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span aria-hidden className="marca text-base leading-none">
-            Partiu PRO
-          </span>
+          {/* No claro a logo usa o roxo da marca, herdado por currentColor. */}
+          <LogoPartiu className="w-32 text-primary" />
           <Link href="/dashboard/perfil" aria-label={'Perfil de ' + primeiroNome}>
             {avatar('h-9 w-9 text-sm')}
           </Link>
