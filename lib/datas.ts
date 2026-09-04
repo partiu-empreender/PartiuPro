@@ -160,3 +160,49 @@ export function dataDoTimestamp(iso: string | null | undefined): string | null {
   const momento = new Date(iso);
   return Number.isNaN(momento.getTime()) ? null : dataBrasil(momento);
 }
+
+/**
+ * Nomes dos meses em português, na ordem do calendário (índice 0 = janeiro).
+ *
+ * Vive aqui, e não em cada tela, porque o Histórico e o Raio-X do dashboard
+ * mostram o mesmo seletor: duas cópias divergiriam na primeira vez que alguém
+ * abreviasse "Setembro" num lado só.
+ */
+export const MESES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+] as const;
+
+/** Nome do mês a partir do número 1-12. Devolve '' se vier fora da faixa. */
+export function nomeDoMes(mes: number): string {
+  return MESES[mes - 1] ?? '';
+}
+
+/**
+ * Recorte de um mês do calendário: o primeiro e o último dia, em YYYY-MM-DD.
+ *
+ * Devolve null quando o mês pedido não faz sentido — é assim que a rota
+ * distingue "me dá agosto" de parâmetro ausente ou lixo, e cai no mês corrente.
+ *
+ * O último dia sai de `Date.UTC(ano, mes, 0)` — dia 0 do mês SEGUINTE, que o
+ * calendário resolve como o último do mês pedido. Escrever 31 na mão erraria
+ * fevereiro, e escrever 28 erraria ano bissexto: em 2028 o dia 29 sumiria do
+ * relatório sem nenhum aviso. Tudo em UTC de propósito: aqui não há instante
+ * nenhum, só calendário (mesmo motivo do resto do arquivo).
+ */
+export function recorteDoMes(
+  ano: number,
+  mes: number,
+): { inicio: string; fim: string } | null {
+  if (!Number.isInteger(ano) || !Number.isInteger(mes)) return null;
+  if (mes < 1 || mes > 12) return null;
+  // A faixa de anos existe pra pegar dedo escorregado (ano 20260) antes de
+  // virar uma consulta que não devolve nada e uma tela vazia sem explicação.
+  if (ano < 2000 || ano > 2100) return null;
+
+  const fim = new Date(Date.UTC(ano, mes, 0));
+  return {
+    inicio: montarData(ano, mes, 1),
+    fim: montarData(fim.getUTCFullYear(), fim.getUTCMonth() + 1, fim.getUTCDate()),
+  };
+}

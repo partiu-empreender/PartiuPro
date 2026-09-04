@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ANOS_DE_LANCAMENTO_RETROATIVO,
   motivoDataDeVendaInvalida,
+  nomeDoMes,
+  recorteDoMes,
 } from '@/lib/datas';
 
 /**
@@ -62,5 +64,68 @@ describe('data de venda retroativa', () => {
 
   it('a janela retroativa é a constante exportada', () => {
     expect(ANOS_DE_LANCAMENTO_RETROATIVO).toBe(3);
+  });
+});
+
+/**
+ * O recorte de um mês do calendário.
+ *
+ * Existe porque o Raio-X do dashboard passou a aceitar mês passado: sem o
+ * último dia, a consulta traria também tudo que veio depois. É aritmética de
+ * calendário — o tipo de coisa que erra em silêncio e só aparece no número do
+ * relatório.
+ */
+describe('recorteDoMes', () => {
+  it('devolve o primeiro e o último dia de um mês de 31 dias', () => {
+    expect(recorteDoMes(2026, 8)).toEqual({ inicio: '2026-08-01', fim: '2026-08-31' });
+  });
+
+  it('devolve o primeiro e o último dia de um mês de 30 dias', () => {
+    expect(recorteDoMes(2026, 9)).toEqual({ inicio: '2026-09-01', fim: '2026-09-30' });
+  });
+
+  it('acerta fevereiro em ano comum', () => {
+    expect(recorteDoMes(2026, 2)).toEqual({ inicio: '2026-02-01', fim: '2026-02-28' });
+  });
+
+  // O caso que uma constante 28 escrita à mão perderia: a venda do dia 29
+  // sumiria do relatório sem aviso nenhum.
+  it('acerta fevereiro em ano bissexto', () => {
+    expect(recorteDoMes(2028, 2)).toEqual({ inicio: '2028-02-01', fim: '2028-02-29' });
+  });
+
+  it('acerta dezembro sem vazar para o ano seguinte', () => {
+    expect(recorteDoMes(2026, 12)).toEqual({ inicio: '2026-12-01', fim: '2026-12-31' });
+  });
+
+  it('põe o zero à esquerda que o Postgres espera', () => {
+    expect(recorteDoMes(2026, 1)).toEqual({ inicio: '2026-01-01', fim: '2026-01-31' });
+  });
+
+  // Devolver null é o que faz a rota cair no mês corrente em vez de montar uma
+  // consulta com data inventada.
+  it('recusa mês fora de 1-12', () => {
+    expect(recorteDoMes(2026, 0)).toBeNull();
+    expect(recorteDoMes(2026, 13)).toBeNull();
+  });
+
+  it('recusa ano absurdo e valor não numérico', () => {
+    expect(recorteDoMes(20260, 8)).toBeNull();
+    expect(recorteDoMes(1999, 8)).toBeNull();
+    expect(recorteDoMes(NaN, 8)).toBeNull();
+    expect(recorteDoMes(2026, NaN)).toBeNull();
+  });
+});
+
+describe('nomeDoMes', () => {
+  it('nomeia os meses pelo número do calendário', () => {
+    expect(nomeDoMes(1)).toBe('Janeiro');
+    expect(nomeDoMes(9)).toBe('Setembro');
+    expect(nomeDoMes(12)).toBe('Dezembro');
+  });
+
+  it('devolve vazio fora da faixa, em vez de "undefined" na tela', () => {
+    expect(nomeDoMes(0)).toBe('');
+    expect(nomeDoMes(13)).toBe('');
   });
 });

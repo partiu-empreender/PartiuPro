@@ -15,6 +15,7 @@ import {
   hojeBrasil,
   motivoDataDeVendaInvalida,
   primeiroDiaDoMesBrasil,
+  recorteDoMes,
 } from '@/lib/datas';
 import { normalizarTelefone } from '@/lib/telefone';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -358,17 +359,29 @@ export async function GET(request: NextRequest) {
 
     // Busca as vendas do mês (a lista exibida no dashboard filtra só as de hoje a partir daqui)
     const hoje = hojeBrasil();
-    const primeiroDiaDoMes = primeiroDiaDoMesBrasil();
 
-    const [
-      { data: vendasDoMes, error: vendasError },
-      { data: atendimentosDoDia, error: atendimentosError },
-      { data: atendimentosDoMes, error: atendimentosMesError },
-    ] = await Promise.all([
-      supabase
-        .from('vendas_diarias')
-        .select(
-          `
+    // Mês pedido pela tela. Sem parâmetro é o mês corrente, que é como a
+    // rota sempre se comportou — nenhuma chamada existente muda.
+    //
+    // O seletor existe porque o Raio-X só olhava o mês corrente: a aluna que
+    // lançava agosto em setembro via os números certos no banco e a tela em
+    // branco, e concluía que o sistema não estava atualizando.
+    const { searchParams } = new URL(request.url);
+    const recorte = recorteDoMes(
+      parseInt(searchParams.get('ano') || '', 10),
+      parseInt(searchParams.get('mes') || '', 10),
+    );
+
+    const primeiroDiaDoMes = recorte ? recorte.inicio : primeiroDiaDoMesBrasil();
+    const ultimoDiaDoMes = recorte ? recorte.fim : null;
+
+    // `gte` sozinho bastava enquanto o recorte era sempre o mês corrente (não
+    // existe venda futura). Pedindo um mês passado, sem o `lte` viriam também
+    // todas as vendas dos meses seguintes.
+    let consultaVendas = supabase
+      .from('vendas_diarias')
+      .select(
+        `
           id,
           data,
           cliente_nome,
@@ -384,21 +397,34 @@ export async function GET(request: NextRequest) {
             tipo
           )
         `
-        )
-        .eq('workspace_id', user.id)
-        .gte('data', primeiroDiaDoMes)
-        .order('created_at', { ascending: false }),
+      )
+      .eq('workspace_id', user.id)
+      .gte('data', primeiroDiaDoMes);
+
+    let consultaAtendimentosDoMes = supabase
+      .from('atendimentos_diarios')
+      .select('pessoas_atendidas')
+      .eq('workspace_id', user.id)
+      .gte('data', primeiroDiaDoMes);
+
+    if (ultimoDiaDoMes) {
+      consultaVendas = consultaVendas.lte('data', ultimoDiaDoMes);
+      consultaAtendimentosDoMes = consultaAtendimentosDoMes.lte('data', ultimoDiaDoMes);
+    }
+
+    const [
+      { data: vendasDoMes, error: vendasError },
+      { data: atendimentosDoDia, error: atendimentosError },
+      { data: atendimentosDoMes, error: atendimentosMesError },
+    ] = await Promise.all([
+      consultaVendas.order('created_at', { ascending: false }),
       supabase
         .from('atendimentos_diarios')
         .select('pessoas_atendidas')
         .eq('workspace_id', user.id)
         .eq('data', hoje)
         .maybeSingle(),
-      supabase
-        .from('atendimentos_diarios')
-        .select('pessoas_atendidas')
-        .eq('workspace_id', user.id)
-        .gte('data', primeiroDiaDoMes),
+      consultaAtendimentosDoMes,
     ]);
 
     if (vendasError) {
@@ -417,6 +443,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // `vendas` e `atendimentos_hoje` continuam sendo os de HOJE, mesmo quando
+    // a tela pediu outro mês: quem os usa é a aba "Vendas do Dia", que tem
+    // seletor próprio de data. Pedindo um mês passado eles vêm vazios, o que
+    // está certo — hoje não pertence àquele mês.
     const vendas = (vendasDoMes || []).filter((venda) => venda.data === hoje);
     const atendimentos_hoje = atendimentosDoDia?.pessoas_atendidas ?? 0;
     const atendimentos_mes = (atendimentosDoMes || []).reduce(

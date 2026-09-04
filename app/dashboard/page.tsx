@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
-import { hojeBrasil, motivoDataDeVendaInvalida, partesHojeBrasil } from '@/lib/datas';
+import { hojeBrasil, motivoDataDeVendaInvalida, nomeDoMes, partesHojeBrasil } from '@/lib/datas';
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import { EtiquetaToggle, type Etiqueta } from '@/components/shared/EtiquetaBadge';
 import { ETIQUETAS_DE_VENDA_SUGERIDAS } from '@/lib/etiquetas';
@@ -39,6 +39,8 @@ import {
   Rocket,
   UserPlus,
   Check,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -113,6 +115,18 @@ export default function DashboardPage() {
   // vendas por mês filtrar aqui custa nada.
   const [vendasDoMes, setVendasDoMes] = useState<VendaDiaria[]>(emCache?.vendasDoMes ?? []);
   const [diaEscolhido, setDiaEscolhido] = useState(hojeBrasil());
+  // Mês do Raio-X. Começa no corrente — o caminho normal continua sendo não
+  // mexer aqui. Existe porque as alunas que lançaram agosto em setembro viam
+  // a tela em branco e achavam que o sistema não tinha salvado.
+  const [mesDoRelatorio, setMesDoRelatorio] = useState(() => {
+    const { ano, mes } = partesHojeBrasil();
+    return { ano, mes };
+  });
+  // O polling de 30s captura o closure de `carregarMetricas` UMA vez. Sem o
+  // ref, ele continuaria pedindo o mês que estava escolhido quando o intervalo
+  // foi criado, e sobrescreveria a tela com os dados do mês errado.
+  const mesDoRelatorioRef = useRef(mesDoRelatorio);
+  mesDoRelatorioRef.current = mesDoRelatorio;
   const [relatorio, setRelatorio] = useState<RelatorioMensal | null>(emCache?.relatorio ?? null);
   const [catalogo, setCatalogo] = useState<ProdutoCatalogo[]>(emCache?.catalogo ?? []);
   const [loading, setLoading] = useState(emCache === undefined);
@@ -175,10 +189,10 @@ export default function DashboardPage() {
       // Fuso do Brasil, e nao o do computador: `new Date().getMonth()` no dia
       // 1o de manha, num navegador configurado com fuso a leste, ainda devolve
       // o mes anterior — e a meta do mes some do painel.
-      const { ano: anoAtual, mes: mesAtual } = partesHojeBrasil();
+      const { ano: anoAtual, mes: mesAtual } = mesDoRelatorioRef.current;
 
       const [resVendas, resMetas, resProdutos] = await Promise.all([
-        fetch('/api/vendas'),
+        fetch(`/api/vendas?ano=${anoAtual}&mes=${mesAtual}`),
         fetch(`/api/metas?ano=${anoAtual}`),
         fetch('/api/produtos'),
       ]);
@@ -208,12 +222,18 @@ export default function DashboardPage() {
       );
       setRelatorio(relatorioDoMes);
 
-      gravarMemoria('dashboard', {
-        vendas: result.vendas || [],
-        vendasDoMes: result.vendas_mes || [],
-        relatorio: relatorioDoMes,
-        catalogo: resProdutos.ok ? produtosResult.data || [] : [],
-      });
+      // Só o mês corrente vai pro cache. Guardar a consulta de um mês passado
+      // faria a próxima visita ao painel abrir mostrando julho como se fosse o
+      // mês atual, até o primeiro fetch responder.
+      const { ano: anoHoje, mes: mesHoje } = partesHojeBrasil();
+      if (anoAtual === anoHoje && mesAtual === mesHoje) {
+        gravarMemoria('dashboard', {
+          vendas: result.vendas || [],
+          vendasDoMes: result.vendas_mes || [],
+          relatorio: relatorioDoMes,
+          catalogo: resProdutos.ok ? produtosResult.data || [] : [],
+        });
+      }
     } catch (error) {
       console.error('Erro ao carregar métricas:', error);
     } finally {
@@ -224,11 +244,15 @@ export default function DashboardPage() {
     }
   };
 
+  // Recarrega ao trocar de mês. O intervalo é recriado junto de propósito: sem
+  // isso, o polling antigo responderia depois da troca e devolveria a tela pro
+  // mês anterior.
   useEffect(() => {
     carregarMetricas();
     const interval = setInterval(carregarMetricas, 30000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesDoRelatorio.ano, mesDoRelatorio.mes]);
 
   // Abre o diálogo já com o número que existe hoje.
   //
@@ -517,14 +541,26 @@ export default function DashboardPage() {
     });
   };
 
+  const ehMesCorrente =
+    mesDoRelatorio.ano === partesHojeBrasil().ano &&
+    mesDoRelatorio.mes === partesHojeBrasil().mes;
+
   // As vendas do dia que ela escolheu no seletor. Cai de volta em `vendas`
   // (hoje, vindo da API) enquanto o mês ainda não carregou.
-  const vendasDoDiaEscolhido =
-    vendasDoMes.length > 0
-      ? vendasDoMes.filter((v) => v.data === diaEscolhido)
-      : diaEscolhido === hojeBrasil()
-        ? vendas
-        : [];
+  //
+  // `vendasDoMes` guarda o mês escolhido no Raio-X, que nem sempre é o mês do
+  // dia procurado aqui. Sem o teste de pertinência, escolher julho no Raio-X e
+  // vir para esta aba mostraria "nenhuma venda hoje" — mentira, porque o mês de
+  // hoje simplesmente não está carregado. Nesse caso a lista avisa em vez de
+  // afirmar um zero que não conferiu.
+  const prefixoDoMesCarregado = `${mesDoRelatorio.ano}-${String(mesDoRelatorio.mes).padStart(2, '0')}`;
+  const diaEstaNoMesCarregado = diaEscolhido.startsWith(prefixoDoMesCarregado);
+
+  const vendasDoDiaEscolhido = diaEstaNoMesCarregado
+    ? vendasDoMes.filter((v) => v.data === diaEscolhido)
+    : diaEscolhido === hojeBrasil()
+      ? vendas
+      : [];
 
   // Sugestões de ocasião que ela ainda não criou.
   const ocasioesSugeridas = ETIQUETAS_DE_VENDA_SUGERIDAS.filter(
@@ -646,12 +682,72 @@ export default function DashboardPage() {
           </TabsList>
 
           <TabsContent value="relatorio" className="space-y-6 mt-4">
+            {/* Seletor de mês do Raio-X. Só anda pra trás: mês futuro não tem
+                venda, e o Histórico é quem cuida de fechar mês passado à mão. */}
+            <div className="flex items-center justify-between gap-3 rounded-2xl border bg-white/50 px-4 py-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Mês anterior"
+                onClick={() =>
+                  setMesDoRelatorio(({ ano, mes }) =>
+                    mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 },
+                  )
+                }
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <div className="text-center">
+                <p className="font-semibold">
+                  {nomeDoMes(mesDoRelatorio.mes)} {mesDoRelatorio.ano}
+                </p>
+                {!ehMesCorrente && (
+                  <button
+                    type="button"
+                    onClick={() => setMesDoRelatorio(partesHojeBrasil())}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Voltar para o mês atual
+                  </button>
+                )}
+              </div>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Próximo mês"
+                disabled={ehMesCorrente}
+                onClick={() =>
+                  setMesDoRelatorio(({ ano, mes }) =>
+                    mes === 12 ? { ano: ano + 1, mes: 1 } : { ano, mes: mes + 1 },
+                  )
+                }
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
             {loading ? (
               <p className="text-center py-8 text-muted-foreground">Carregando...</p>
             ) : !relatorio || relatorio.vendas_realizadas === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
-                  Registre sua primeira venda do mês pra ver o relatório completo.
+                  {ehMesCorrente ? (
+                    'Registre sua primeira venda do mês pra ver o relatório completo.'
+                  ) : (
+                    <>
+                      Nenhuma venda registrada em {nomeDoMes(mesDoRelatorio.mes).toLowerCase()} de{' '}
+                      {mesDoRelatorio.ano}.
+                      <br />
+                      <Link
+                        href="/dashboard/historico"
+                        className="text-primary hover:underline"
+                      >
+                        Preencher os números desse mês à mão no Histórico
+                      </Link>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -1036,6 +1132,14 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     ))
+                  ) : !diaEstaNoMesCarregado && diaEscolhido !== hojeBrasil() ? (
+                    // Só é possível chegar aqui escolhendo, no Raio-X, um mês
+                    // diferente do dia procurado. Melhor pedir a troca do que
+                    // afirmar um zero que não foi conferido.
+                    <p className="text-center py-8 text-muted-foreground">
+                      Escolha {nomeDoMes(Number(diaEscolhido.slice(5, 7))).toLowerCase()} no
+                      Relatório do Mês pra ver as vendas desse dia.
+                    </p>
                   ) : (
                     <p className="text-center py-8 text-muted-foreground">
                       {diaEscolhido === hojeBrasil()

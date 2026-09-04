@@ -42,13 +42,8 @@ import { cn } from '@/lib/utils';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
 import { aplicarMascaraMoeda, formatarMoeda, parsearMoeda } from '@/lib/moeda';
-import { partesHojeBrasil } from '@/lib/datas';
+import { MESES, partesHojeBrasil } from '@/lib/datas';
 import { motivoFechamentoInvalido, type FechamentoManual, type NumerosDoMes } from '@/lib/fechamento';
-
-const MESES = [
-  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
-];
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const brlCurto = (n: number) =>
