@@ -15,8 +15,8 @@ export async function DELETE() {
     }
 
     // Deleta o usuário do Auth; o restante (perfil, produtos, vendas,
-    // atendimentos, metas, consentimentos, log de acesso) cascateia via as
-    // FKs ON DELETE CASCADE de 004_lgpd_consent.sql.
+    // atendimentos, metas, consentimentos) cascateia via as FKs
+    // ON DELETE CASCADE de 004_lgpd_consent.sql.
     const { error } = await supabaseAdmin.auth.admin.deleteUser(user.id);
 
     if (error) {

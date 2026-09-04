@@ -1,0 +1,31 @@
+-- 012_remover_admin_access_log.sql
+-- Remove a tabela `admin_access_log`, que nunca foi usada.
+--
+-- Ela nasceu na migration 004 junto com o recurso de log de acesso
+-- administrativo: um modal que pediria à mentora o motivo antes de abrir o
+-- detalhe de uma aluna, e a linha correspondente apareceria pra aluna na aba
+-- Privacidade. O recurso foi REMOVIDO a pedido da Tania em 26/08/2026 — está
+-- registrado em ACOES_FUTURAS.md — mas a tabela ficou.
+--
+-- Ficar não era inofensivo do jeito que parecia. O comentário da 004 descreve,
+-- no presente, um comportamento que não existe ("toda vez que a mentora abre o
+-- detalhe de uma aluna, 1 linha é gravada aqui"). Quem lesse o schema pra
+-- entender as garantias de privacidade do sistema encontraria uma promessa de
+-- transparência que nada cumpre — e foi exatamente isso que aconteceu na
+-- revisão de 04/09/2026, que a classificou como lacuna de LGPD antes de achar
+-- o registro da decisão. Schema que descreve o que não acontece custa caro.
+--
+-- Vale dizer o que NÃO muda: a política de privacidade (lib/legal.ts) nunca
+-- prometeu esse log à aluna. Ela diz que a equipe da Ponte tem acesso restrito
+-- a finalidades específicas, o que continua verdadeiro. Não há promessa
+-- quebrada a consertar aqui, só um resíduo a varrer.
+--
+-- Seguro: a tabela está vazia (0 linhas, conferido em 04/09/2026) e nenhuma
+-- linha de código do app escreve ou lê dela. A policy de SELECT e o índice
+-- caem junto com o DROP.
+--
+-- Se algum dia o recurso voltar, ele volta com desenho próprio — e aí a tabela
+-- é recriada com o código que a alimenta no mesmo commit, que é como deveria
+-- ter sido da primeira vez.
+
+DROP TABLE IF EXISTS admin_access_log;

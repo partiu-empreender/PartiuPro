@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { isCurrentUserAdmin, supabaseAdmin } from '@/lib/supabase-server';
 import { calcularMetricasVendas } from '@/lib/metrics';
 import { hojeBrasil, primeiroDiaDoMesBrasil, diasAtrasBrasil, partesHojeBrasil } from '@/lib/datas';
+import { diasDesde, passoDoFunil } from '@/lib/ativacao';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const isAdmin = await isCurrentUserAdmin();
@@ -24,8 +25,16 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       { data: atendimentos },
       { data: atendimentoHoje },
       { data: metaAtual },
+      { count: totalMetas },
+      { count: totalClientes },
+      { count: totalVendas },
+      { count: totalAtendimentos },
     ] = await Promise.all([
-      supabaseAdmin.from('users').select('id, full_name, email').eq('id', workspaceId).single(),
+      supabaseAdmin
+        .from('users')
+        .select('id, full_name, email, created_at')
+        .eq('id', workspaceId)
+        .single(),
       supabaseAdmin
         .from('products')
         .select('id, name, price, cost, created_at')
@@ -59,10 +68,41 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         .eq('mes', mesAtual)
         .eq('ano', anoAtual)
         .maybeSingle(),
+      // Sinais de configuração: existe QUALQUER linha, em qualquer data. São
+      // marcos de onboarding, não atividade recente — cadastrar o catálogo em
+      // agosto continua valendo em setembro. head+count não traz linha nenhuma.
+      supabaseAdmin
+        .from('metas')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId),
+      supabaseAdmin
+        .from('customers')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId),
+      supabaseAdmin
+        .from('vendas_diarias')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId),
+      supabaseAdmin
+        .from('atendimentos_diarios')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId),
     ]);
 
     if (perfilError || !perfil) {
       return NextResponse.json({ error: 'Aluna não encontrada' }, { status: 404 });
+    }
+
+    // O último login vive em auth.users — é o que separa "nunca abriu o
+    // sistema" de "abriu e travou". Num usuário só, getUserById basta (a
+    // listagem paginada é coisa do painel geral). Nunca derruba a página: sem
+    // ele a tela mostra "—" e o resto do detalhe continua servindo.
+    let ultimoLogin: string | null = null;
+    try {
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(workspaceId);
+      ultimoLogin = authUser?.user?.last_sign_in_at ?? null;
+    } catch (error) {
+      console.error('Não foi possível ler o último login da aluna:', error);
     }
 
     const vendasHoje = (vendasDoMes || []).filter((v) => v.data === hoje);
@@ -73,6 +113,28 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       success: true,
       data: {
         perfil,
+        // Situação da conta: sem isto a mentora vê que a aluna não vendeu, mas
+        // não sabe se ela chegou a abrir o sistema — e as duas coisas pedem
+        // conversas completamente diferentes.
+        conta: {
+          criada_em: perfil.created_at ?? null,
+          ultimo_login: ultimoLogin,
+          dias_sem_entrar: diasDesde(ultimoLogin),
+          passo: passoDoFunil(ultimoLogin, {
+            temProduto: (produtos || []).length > 0,
+            temCliente: (totalClientes ?? 0) > 0,
+            temMeta: (totalMetas ?? 0) > 0,
+            temAtendimento: (totalAtendimentos ?? 0) > 0,
+            temVenda: (totalVendas ?? 0) > 0,
+          }),
+          totais: {
+            produtos: (produtos || []).length,
+            clientes: totalClientes ?? 0,
+            metas: totalMetas ?? 0,
+            vendas: totalVendas ?? 0,
+            atendimentos: totalAtendimentos ?? 0,
+          },
+        },
         metricas,
         meta_mensal: metaAtual?.meta_mensal ?? 0,
         produtos: produtos || [],

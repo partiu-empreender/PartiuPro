@@ -39,7 +39,7 @@ Ver [`PLANO_MIGRACAO_LOVABLE.md`](./PLANO_MIGRACAO_LOVABLE.md) — plano complet
 
 ### Migration `004_lgpd_consent.sql` — já aplicada (2026-08-26)
 - Criou `terms_acceptances`, `marketing_consents` e `admin_access_log`, e trocou as FKs que apontam pra `users(id)` (inclusive `users.id → auth.users(id)`) pra `ON DELETE CASCADE`.
-- **Nota**: a tabela `admin_access_log` ficou sem uso — o recurso de log de acesso do admin (modal pedindo motivo antes de ver o detalhe de uma aluna) foi removido a pedido da Tania em 2026-08-26. A tabela em si é inofensiva (vazia, sem nada escrevendo nela); pode ser removida numa limpeza futura se quiserem.
+- **Nota**: a tabela `admin_access_log` ficou sem uso — o recurso de log de acesso do admin (modal pedindo motivo antes de ver o detalhe de uma aluna) foi removido a pedido da Tania em 2026-08-26. **Resolvido**: a tabela foi removida na migration `012_remover_admin_access_log.sql` (2026-09-04), vazia e sem nada escrevendo nela. O motivo de não deixar quieto: o comentário da 004 descrevia no presente um comportamento inexistente, e uma revisão o leu como promessa de transparência não cumprida.
 
 ### Prioridade 2 do documento de LGPD (ainda não implementada)
 - Conta de demonstração fictícia pra material de divulgação (evita depender de autorização de qualquer aluna).
