@@ -80,7 +80,17 @@ function LoginForm() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Senha</label>
+            <div className="flex items-baseline justify-between gap-3">
+              <label className="text-sm font-medium">Senha</label>
+              {/* Junto do campo, e não no rodapé: é digitando a senha que a
+                  pessoa descobre que não lembra dela. */}
+              <Link
+                href="/recuperar-senha"
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Esqueci minha senha
+              </Link>
+            </div>
             <Input
               type="password"
               placeholder="••••••••"

@@ -142,10 +142,15 @@ export async function POST(request: Request) {
       });
 
       if (error) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 401 },
-        );
+        // O Supabase responde em ingles ("Invalid login credentials"), e essa
+        // frase chegava crua na tela. Quem usa o sistema nao le em ingles.
+        const emPortugues = /invalid login credentials/i.test(error.message)
+          ? 'E-mail ou senha incorretos.'
+          : /email not confirmed/i.test(error.message)
+            ? 'Confirme seu e-mail antes de entrar. Procure a mensagem que enviamos no seu e-mail.'
+            : error.message;
+
+        return NextResponse.json({ error: emPortugues }, { status: 401 });
       }
 
       return NextResponse.json(
@@ -155,6 +160,80 @@ export async function POST(request: Request) {
         },
         { status: 200 },
       );
+    }
+
+    // ============================================
+    // RECUPERAR SENHA
+    // ============================================
+    // Sem isto, quem esquecia a senha nao tinha saida nenhuma dentro do
+    // sistema: a tela de login nao oferecia caminho, e a unica forma de
+    // destravar era alguem da Ponte redefinir a senha a mao no painel do
+    // Supabase. Com 69 contas recem-criadas isso vira fila de suporte.
+    if (action === 'recuperar') {
+      if (!validateEmail(email)) {
+        return NextResponse.json({ error: 'E-mail inválido' }, { status: 400 });
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${new URL(request.url).origin}/nova-senha`,
+      });
+
+      // Responde SUCESSO mesmo quando da erro, de proposito.
+      //
+      // Se a resposta mudasse conforme o e-mail existir ou nao, qualquer um
+      // descobriria qual e-mail tem conta aqui — e a base e de mulheres
+      // empreendedoras com os dados do proprio negocio dentro. O custo e que
+      // quem digitar o e-mail errado nao recebe aviso; o ganho e que a lista
+      // de quem usa o sistema nao vaza pela tela de login.
+      if (error) {
+        console.error('Falha ao enviar e-mail de recuperação:', error.message);
+      }
+
+      return NextResponse.json(
+        {
+          message:
+            'Se existir uma conta com esse e-mail, o link para criar uma nova senha chega em instantes.',
+        },
+        { status: 200 },
+      );
+    }
+
+    // ============================================
+    // DEFINIR A NOVA SENHA
+    // ============================================
+    // Roda depois que a pessoa clicou no link do e-mail: o Supabase ja criou
+    // uma sessao de recuperacao, e e ela que autoriza a troca. Por isso aqui
+    // NAO se pede a senha antiga — quem chegou ate aqui provou o acesso ao
+    // e-mail.
+    if (action === 'nova-senha') {
+      if (typeof password !== 'string' || password.length < 6) {
+        return NextResponse.json(
+          { error: 'A senha precisa ter pelo menos 6 caracteres' },
+          { status: 400 },
+        );
+      }
+
+      const {
+        data: { user: usuarioDaSessao },
+      } = await supabase.auth.getUser();
+
+      if (!usuarioDaSessao) {
+        return NextResponse.json(
+          {
+            error:
+              'Esse link expirou ou já foi usado. Peça um novo link na tela de login.',
+          },
+          { status: 401 },
+        );
+      }
+
+      const { error } = await supabase.auth.updateUser({ password });
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+
+      return NextResponse.json({ message: 'Senha alterada com sucesso' }, { status: 200 });
     }
 
     return NextResponse.json(
