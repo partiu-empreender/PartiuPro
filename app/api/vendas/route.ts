@@ -443,3 +443,148 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// ============================================
+// DELETE - Excluir uma venda
+// ============================================
+
+/**
+ * Recalcula os totais da cliente a partir das vendas que SOBRARAM.
+ *
+ * A tentação aqui é decrementar: tirar 1 de `total_orders` e o valor de
+ * `total_spent`. Isso funciona pros dois primeiros campos, mas quebra no
+ * terceiro — e é justamente o terceiro que importa.
+ *
+ * `last_order_at` é a data da venda mais recente, e o POST acima só a faz
+ * AVANÇAR ("só avança, nunca retrocede", ver lá em cima). Não existe operação
+ * inversa: excluída a venda mais recente, a data anterior não está guardada em
+ * lugar nenhum — só dá pra descobrir olhando o que restou. Se ficasse a data
+ * antiga, a cliente continuaria marcada como tendo comprado num dia em que já
+ * não comprou, e sumiria do filtro "Sem comprar há 3/6/12 meses"
+ * (lib/filtros-clientes.ts) e da agenda de lembretes: exatamente a lista de
+ * quem precisa de contato.
+ *
+ * Então recalcula tudo do zero. São poucas vendas por cliente, e um número
+ * certo vale mais que uma consulta economizada.
+ *
+ * Não lança: se o recálculo falhar, a venda já foi excluída — que é o que a
+ * aluna pediu. Mesma disciplina de `resolverCliente`.
+ */
+async function recalcularTotaisDaCliente(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  customerId: string,
+): Promise<void> {
+  try {
+    const { data: restantes, error } = await supabase
+      .from('vendas_diarias')
+      .select('data, faturamento_total, shipping_cost')
+      .eq('workspace_id', workspaceId)
+      .eq('customer_id', customerId);
+
+    if (error) throw error;
+
+    const vendas = restantes || [];
+
+    // `total_spent` acompanha o faturamento SEM frete: é assim que o POST
+    // grava (soma `faturamento_total` dos itens, não `total_com_frete`).
+    // Recalcular com o frete junto inflaria o histórico da cliente a cada
+    // exclusão.
+    const total_spent = vendas.reduce(
+      (soma, v) => soma + (Number(v.faturamento_total) || 0) - (Number(v.shipping_cost) || 0),
+      0,
+    );
+
+    const maisRecente = vendas.reduce<string | null>(
+      (maior, v) => (!maior || v.data > maior ? v.data : maior),
+      null,
+    );
+
+    await supabase
+      .from('customers')
+      .update({
+        total_orders: vendas.length,
+        total_spent,
+        last_order_at: maisRecente
+          ? new Date(`${maisRecente}T12:00:00-03:00`).toISOString()
+          : null,
+      })
+      .eq('id', customerId);
+  } catch (erro) {
+    console.error('Não foi possível recalcular os totais da cliente:', erro);
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await getRouteHandlerSupabaseClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    const id = request.nextUrl.searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'Informe qual venda excluir.' }, { status: 400 });
+    }
+
+    // Busca antes de excluir por dois motivos: descobrir a cliente cujos
+    // totais precisam ser refeitos, e distinguir "não existe" de "não é sua".
+    // O `.eq('workspace_id')` é redundante com a RLS de propósito — a RLS é a
+    // garantia, isto aqui é o que devolve 404 em vez de um sucesso silencioso.
+    const { data: venda, error: buscaError } = await supabase
+      .from('vendas_diarias')
+      .select('id, customer_id, cliente_nome')
+      .eq('id', id)
+      .eq('workspace_id', user.id)
+      .maybeSingle();
+
+    if (buscaError) {
+      return NextResponse.json(
+        { error: 'Erro ao buscar a venda', details: buscaError.message },
+        { status: 500 },
+      );
+    }
+    if (!venda) {
+      return NextResponse.json({ error: 'Venda não encontrada.' }, { status: 404 });
+    }
+
+    // Itens e etiquetas somem junto: venda_itens (migration 001) e
+    // venda_tag_links (migration 010) têm ON DELETE CASCADE.
+    const { error: deleteError } = await supabase
+      .from('vendas_diarias')
+      .delete()
+      .eq('id', id)
+      .eq('workspace_id', user.id);
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: 'Erro ao excluir a venda', details: deleteError.message },
+        { status: 500 },
+      );
+    }
+
+    if (venda.customer_id) {
+      await recalcularTotaisDaCliente(supabase, user.id, venda.customer_id);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Venda de ${venda.cliente_nome} excluída.`,
+    });
+  } catch (error) {
+    console.error('Erro ao excluir venda:', error);
+    return NextResponse.json(
+      {
+        error: 'Erro interno do servidor',
+        details: error instanceof Error ? error.message : 'Desconhecido',
+      },
+      { status: 500 },
+    );
+  }
+}

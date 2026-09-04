@@ -17,6 +17,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -161,6 +162,13 @@ export default function DashboardPage() {
   const [atendimentoQtd, setAtendimentoQtd] = useState('');
   const [atendimentoErro, setAtendimentoErro] = useState('');
   const [salvandoAtendimento, setSalvandoAtendimento] = useState(false);
+  // Venda escolhida pra excluir. Guarda a venda inteira, e não só o id, porque
+  // o diálogo mostra cliente, data e valor: ela precisa reconhecer o que vai
+  // apagar antes de confirmar, principalmente quando a mesma cliente comprou
+  // duas vezes no mesmo dia.
+  const [vendaParaExcluir, setVendaParaExcluir] = useState<VendaDiaria | null>(null);
+  const [excluindoVenda, setExcluindoVenda] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState('');
 
   const carregarMetricas = async () => {
     try {
@@ -280,6 +288,31 @@ export default function DashboardPage() {
       setAtendimentoErro('Erro ao registrar atendimento. Tente novamente.');
     } finally {
       setSalvandoAtendimento(false);
+    }
+  };
+
+  // Exclui de vez — não é rascunho nem lixeira. As alunas pediram porque hoje
+  // uma venda digitada errada (data trocada, valor errado) fica no faturamento
+  // pra sempre, e elas não têm como corrigir sozinhas.
+  const excluirVenda = async () => {
+    if (!vendaParaExcluir) return;
+    setErroExclusao('');
+    setExcluindoVenda(true);
+    try {
+      const res = await fetch(`/api/vendas?id=${vendaParaExcluir.id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok) {
+        setErroExclusao(result.error || 'Não foi possível excluir a venda.');
+        return;
+      }
+      setVendaParaExcluir(null);
+      // Recarrega em vez de tirar da lista na mão: faturamento, ticket médio,
+      // conversão e ranking mudam todos com a venda que saiu.
+      await carregarMetricas();
+    } catch {
+      setErroExclusao('Não foi possível excluir a venda. Tente novamente.');
+    } finally {
+      setExcluindoVenda(false);
     }
   };
 
@@ -987,8 +1020,19 @@ export default function DashboardPage() {
                             {(venda.venda_itens || []).map((item) => item.produto_nome).join(', ') || 'Sem itens'}
                           </p>
                         </div>
-                        <div className="text-right">
+                        <div className="flex items-center gap-3">
                           <p className="font-bold text-lg">R$ {venda.faturamento_total.toFixed(2)}</p>
+                          <button
+                            type="button"
+                            aria-label={`Excluir a venda de ${venda.cliente_nome}`}
+                            onClick={() => {
+                              setErroExclusao('');
+                              setVendaParaExcluir(venda);
+                            }}
+                            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
                     ))
@@ -1425,6 +1469,64 @@ export default function DashboardPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de exclusão. Mostra cliente, data e valor porque a lista
+          pode ter duas vendas parecidas da mesma pessoa — e isto não tem
+          desfazer. */}
+      <Dialog
+        open={vendaParaExcluir !== null}
+        onOpenChange={(aberto) => !aberto && setVendaParaExcluir(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Excluir esta venda?</DialogTitle>
+          </DialogHeader>
+
+          {vendaParaExcluir && (
+            <div className="rounded-2xl border bg-muted/40 p-4">
+              <p className="font-semibold">{vendaParaExcluir.cliente_nome}</p>
+              <p className="text-sm text-muted-foreground">
+                {vendaParaExcluir.data.split('-').reverse().join('/')} ·{' '}
+                {brl(vendaParaExcluir.faturamento_total)}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {(vendaParaExcluir.venda_itens || [])
+                  .map((item) => item.produto_nome)
+                  .join(', ') || 'Sem itens'}
+              </p>
+            </div>
+          )}
+
+          <p className="text-sm text-muted-foreground">
+            A venda sai do seu faturamento do mês e não dá pra desfazer. O histórico da
+            cliente é recalculado.
+          </p>
+
+          {erroExclusao && (
+            <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+              {erroExclusao}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setVendaParaExcluir(null)}
+              disabled={excluindoVenda}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="outline"
+              className="text-destructive hover:bg-destructive/10"
+              onClick={excluirVenda}
+              disabled={excluindoVenda}
+            >
+              {excluindoVenda ? 'Excluindo...' : 'Excluir'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
