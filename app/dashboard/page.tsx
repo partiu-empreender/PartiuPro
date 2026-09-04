@@ -25,6 +25,13 @@ import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import { hojeBrasil, motivoDataDeVendaInvalida, nomeDoMes, partesHojeBrasil } from '@/lib/datas';
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import { aplicarMascaraMoeda, parsearMoeda } from '@/lib/moeda';
+import {
+  ROTULO_ENTREGA,
+  ROTULO_PAGAMENTO,
+  resumoDaSituacao,
+  type Entrega,
+  type Pagamento,
+} from '@/lib/situacao-venda';
 import { EtiquetaToggle, type Etiqueta } from '@/components/shared/EtiquetaBadge';
 import { ETIQUETAS_DE_VENDA_SUGERIDAS } from '@/lib/etiquetas';
 import {
@@ -44,6 +51,7 @@ import {
   ChevronRight,
   ChevronDown,
   Truck,
+  CheckCircle2,
 } from 'lucide-react';
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -73,7 +81,8 @@ interface VendaDiaria {
   data: string;
   cliente_nome: string;
   faturamento_total: number;
-  status: string;
+  status: Pagamento;
+  entrega: Entrega;
   venda_itens: VendaItemView[];
 }
 
@@ -168,6 +177,13 @@ export default function DashboardPage() {
   // caminho comum mais pesado pra atender o caso de quem entrega. Quem precisa
   // abre; quem não precisa nem vê. As colunas já existiam no banco desde a
   // migration 001 e nenhuma tela as oferecia.
+  // Pagamento da venda no momento do cadastro. Começa em 'pago' porque é o
+  // caminho comum; quem vendeu fiado troca aqui e a venda entra na lista de
+  // cobrança em vez de sumir na memória dela.
+  const [pagamentoVenda, setPagamentoVenda] = useState<Pagamento>('pago');
+  // Venda cuja situação está sendo alterada pela lista.
+  const [situacaoEmEdicao, setSituacaoEmEdicao] = useState<VendaDiaria | null>(null);
+  const [salvandoSituacao, setSalvandoSituacao] = useState(false);
   const [entregaAberta, setEntregaAberta] = useState(false);
   const [dataEntrega, setDataEntrega] = useState('');
   const [periodoEntrega, setPeriodoEntrega] = useState('');
@@ -354,6 +370,29 @@ export default function DashboardPage() {
     }
   };
 
+  // Altera pagamento e/ou entrega de uma venda já registrada.
+  //
+  // Recarrega tudo depois: cancelar tira a venda do faturamento, e o Raio-X,
+  // o ticket médio e o ranking mudam junto.
+  const alterarSituacao = async (campos: { status?: Pagamento; entrega?: Entrega }) => {
+    if (!situacaoEmEdicao) return;
+    setSalvandoSituacao(true);
+    try {
+      const res = await fetch(`/api/vendas?id=${situacaoEmEdicao.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(campos),
+      });
+      if (!res.ok) return;
+      setSituacaoEmEdicao(null);
+      await carregarMetricas();
+    } catch {
+      // Sem alarde: a situação continua como estava e ela tenta de novo.
+    } finally {
+      setSalvandoSituacao(false);
+    }
+  };
+
   const abrirModal = () => {
     setClienteNome('');
     setClienteTelefone('');
@@ -364,6 +403,7 @@ export default function DashboardPage() {
     setItens([itemVazio()]);
     setDataVenda(hojeBrasil());
     setOcasioesDaVenda([]);
+    setPagamentoVenda('pago');
     setEntregaAberta(false);
     setDataEntrega('');
     setPeriodoEntrega('');
@@ -576,6 +616,17 @@ export default function DashboardPage() {
   const prefixoDoMesCarregado = `${mesDoRelatorio.ano}-${String(mesDoRelatorio.mes).padStart(2, '0')}`;
   const diaEstaNoMesCarregado = diaEscolhido.startsWith(prefixoDoMesCarregado);
 
+  // Vendas do MÊS que ainda pedem alguma coisa. Existe porque a lista abaixo
+  // mostra um dia só: marcar "a receber" numa venda do dia 20 e ela sumiria da
+  // vista no dia seguinte, e um campo de cobrança que não se vê não cobra
+  // ninguém. Aqui elas ficam juntas, independente do dia.
+  const vendasPendentes = vendasDoMes.filter(
+    (v) => v.status !== 'cancelada' && (v.status === 'pendente' || v.entrega === 'pendente'),
+  );
+  const totalAReceber = vendasPendentes
+    .filter((v) => v.status === 'pendente')
+    .reduce((soma, v) => soma + v.faturamento_total, 0);
+
   const vendasDoDiaEscolhido = diaEstaNoMesCarregado
     ? vendasDoMes.filter((v) => v.data === diaEscolhido)
     : diaEscolhido === hojeBrasil()
@@ -632,6 +683,7 @@ export default function DashboardPage() {
           data: dataVenda,
           tag_ids: ocasioesDaVenda.length ? ocasioesDaVenda : undefined,
           cliente_telefone: clienteTelefone.trim() || undefined,
+          status: pagamentoVenda,
           delivery_date: dataEntrega || undefined,
           delivery_period: periodoEntrega || undefined,
           bairro: bairroEntrega.trim() || undefined,
@@ -1098,6 +1150,45 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="hoje" className="space-y-4 mt-4">
+            {/* O que ainda pede ação, no mês inteiro. Só aparece quando há
+                pendência: um cartão vazio dizendo "nada pendente" seria ruído
+                em toda visita. */}
+            {vendasPendentes.length > 0 && (
+              <Card className="border-amber-200 bg-amber-50/60">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">
+                    Falta resolver ({vendasPendentes.length})
+                  </CardTitle>
+                  {totalAReceber > 0 && (
+                    <CardDescription className="text-amber-900">
+                      {brl(totalAReceber)} a receber
+                    </CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {vendasPendentes.map((venda) => (
+                    <button
+                      key={venda.id}
+                      type="button"
+                      onClick={() => setSituacaoEmEdicao(venda)}
+                      className="flex w-full items-center justify-between gap-3 rounded-xl bg-white/70 px-3 py-2 text-left transition-colors hover:bg-white"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{venda.cliente_nome}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {venda.data.split('-').reverse().join('/')} ·{' '}
+                          {resumoDaSituacao(venda.status, venda.entrega)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold">
+                        {brl(venda.faturamento_total)}
+                      </span>
+                    </button>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1.5">
@@ -1147,9 +1238,46 @@ export default function DashboardPage() {
                           <p className="text-sm text-muted-foreground">
                             {(venda.venda_itens || []).map((item) => item.produto_nome).join(', ') || 'Sem itens'}
                           </p>
+                          {/* Etiqueta só quando há o que fazer: venda paga e
+                              entregue não ganha selo, senão as duas que pedem
+                              ação sumiriam no meio de uma tela de verde. */}
+                          {(() => {
+                            const resumo = resumoDaSituacao(venda.status, venda.entrega);
+                            if (!resumo) return null;
+                            const cancelada = venda.status === 'cancelada';
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setSituacaoEmEdicao(venda)}
+                                className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
+                                  cancelada
+                                    ? 'bg-muted text-muted-foreground line-through'
+                                    : 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+                                }`}
+                              >
+                                {resumo}
+                              </button>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center gap-3">
-                          <p className="font-bold text-lg">R$ {venda.faturamento_total.toFixed(2)}</p>
+                          <p
+                            className={`text-lg font-bold ${
+                              venda.status === 'cancelada'
+                                ? 'text-muted-foreground line-through'
+                                : ''
+                            }`}
+                          >
+                            R$ {venda.faturamento_total.toFixed(2)}
+                          </p>
+                          <button
+                            type="button"
+                            aria-label={`Mudar situação da venda de ${venda.cliente_nome}`}
+                            onClick={() => setSituacaoEmEdicao(venda)}
+                            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </button>
                           <button
                             type="button"
                             aria-label={`Excluir a venda de ${venda.cliente_nome}`}
@@ -1369,6 +1497,34 @@ export default function DashboardPage() {
                   <p className="text-xs text-muted-foreground">
                     Lançamento retroativo: esta venda entra no faturamento do mês
                     em que aconteceu, não no de hoje.
+                  </p>
+                )}
+              </div>
+
+              {/* Pagamento. Dois botões em vez de um select: são só duas
+                  opções no cadastro (cancelar uma venda que está sendo criada
+                  não faz sentido), e botão à vista é mais rápido que abrir
+                  lista — ela registra venda com o celular na mão. */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pagamento</label>
+                <div className="flex gap-2">
+                  {(['pago', 'pendente'] as const).map((opcao) => (
+                    <Button
+                      key={opcao}
+                      type="button"
+                      variant={pagamentoVenda === opcao ? 'default' : 'outline'}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setPagamentoVenda(opcao)}
+                    >
+                      {ROTULO_PAGAMENTO[opcao]}
+                    </Button>
+                  ))}
+                </div>
+                {pagamentoVenda === 'pendente' && (
+                  <p className="text-xs text-muted-foreground">
+                    A venda continua no faturamento do mês — o que falta é o dinheiro
+                    entrar. Ela fica marcada como &ldquo;a receber&rdquo; na lista.
                   </p>
                 )}
               </div>
@@ -1730,6 +1886,75 @@ export default function DashboardPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Situação da venda: pagamento e entrega, lado a lado.
+
+          Os dois eixos aparecem juntos porque é assim que ela pensa a venda
+          ("recebi mas não entreguei"), e separados em duas linhas porque são
+          independentes — ver lib/situacao-venda.ts. */}
+      <Dialog
+        open={situacaoEmEdicao !== null}
+        onOpenChange={(aberto) => !aberto && setSituacaoEmEdicao(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Situação da venda</DialogTitle>
+            {situacaoEmEdicao && (
+              <DialogDescription>
+                {situacaoEmEdicao.cliente_nome} ·{' '}
+                {situacaoEmEdicao.data.split('-').reverse().join('/')} ·{' '}
+                {brl(situacaoEmEdicao.faturamento_total)}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+
+          {situacaoEmEdicao && (
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Pagamento</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['pago', 'pendente', 'cancelada'] as const).map((opcao) => (
+                    <Button
+                      key={opcao}
+                      type="button"
+                      size="sm"
+                      variant={situacaoEmEdicao.status === opcao ? 'default' : 'outline'}
+                      disabled={salvandoSituacao}
+                      onClick={() => alterarSituacao({ status: opcao })}
+                    >
+                      {ROTULO_PAGAMENTO[opcao]}
+                    </Button>
+                  ))}
+                </div>
+                {situacaoEmEdicao.status !== 'cancelada' && (
+                  <p className="text-xs text-muted-foreground">
+                    Cancelar tira a venda do faturamento do mês e do histórico da
+                    cliente. Dá pra desfazer.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Entrega</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['pendente', 'entregue', 'nao_aplica'] as const).map((opcao) => (
+                    <Button
+                      key={opcao}
+                      type="button"
+                      size="sm"
+                      variant={situacaoEmEdicao.entrega === opcao ? 'default' : 'outline'}
+                      disabled={salvandoSituacao}
+                      onClick={() => alterarSituacao({ entrega: opcao })}
+                    >
+                      {ROTULO_ENTREGA[opcao]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

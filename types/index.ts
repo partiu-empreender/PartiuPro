@@ -29,7 +29,11 @@ export interface VendaDiaria {
   cliente_nome: string;
   bairro?: string;
   faturamento_total: number;
-  status: 'draft' | 'pending' | 'confirmed' | 'delivered' | 'cancelled';
+  /** Pagamento. Ver lib/situacao-venda.ts — migration 013 trocou o esquema
+      antigo (draft/pending/confirmed/...) por dois eixos independentes. */
+  status: 'pago' | 'pendente' | 'cancelada';
+  /** Entrega, independente do pagamento. */
+  entrega: 'pendente' | 'entregue' | 'nao_aplica';
   delivery_date?: string;
   delivery_period?: 'morning' | 'afternoon' | 'evening';
   shipping_cost: number;
@@ -108,6 +112,10 @@ export interface Order {
   id: string;
   workspace_id: string;
   customer_id: string;
+  // Esquema ANTIGO de propósito: a migration 013 mexeu só em vendas_diarias,
+  // que é a tabela que o app realmente usa. `orders` nasceu na 001, está
+  // vazia, e sua única referência no código é `getWorkspaceStats`
+  // (lib/supabase-server.ts), que ninguém chama.
   status: 'draft' | 'pending' | 'confirmed' | 'delivered' | 'cancelled';
   subtotal: number;
   shipping_cost: number;

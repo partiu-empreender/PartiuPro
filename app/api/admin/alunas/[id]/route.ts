@@ -47,6 +47,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
           venda_itens ( id, produto_nome, quantidade, preco_unitario, subtotal )`,
         )
         .eq('workspace_id', workspaceId)
+        // Mesmo motivo da rota da aluna: venda cancelada não conta como
+        // faturamento, e a mentora precisa ver o mesmo número que ela.
+        .neq('status', 'cancelada')
         .gte('data', primeiroDiaDoMes)
         .order('created_at', { ascending: false }),
       supabaseAdmin

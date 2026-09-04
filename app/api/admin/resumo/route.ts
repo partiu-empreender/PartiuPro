@@ -90,6 +90,7 @@ async function carregarResumoAlunas(): Promise<AlunaResumo[]> {
     supabaseAdmin
       .from('vendas_diarias')
       .select('workspace_id, faturamento_total, data, created_at')
+      .neq('status', 'cancelada')
       .gte('data', trintaDiasAtras),
     carregarUltimoLogin(),
     // Os sinais de configuração. Sem recorte de data de propósito: cadastrar o

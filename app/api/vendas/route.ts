@@ -18,6 +18,12 @@ import {
   recorteDoMes,
 } from '@/lib/datas';
 import { normalizarTelefone } from '@/lib/telefone';
+import {
+  ehEntrega,
+  ehPagamento,
+  type Entrega,
+  type Pagamento,
+} from '@/lib/situacao-venda';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 type TipoItem = 'produto' | 'adicional';
@@ -44,6 +50,9 @@ interface RegistrarVendaRequest {
   delivery_period?: string;
   /** Ocasião da compra: aniversário, Namorados, corporativo. */
   tag_ids?: string[];
+  /** Pagamento e entrega. Ausentes = o default do banco (pago / a entregar). */
+  status?: Pagamento;
+  entrega?: Entrega;
 }
 
 /**
@@ -177,7 +186,11 @@ export async function POST(request: NextRequest) {
         bairro: body.bairro || null,
         faturamento_total: total_com_frete,
         shipping_cost: body.shipping_cost || 0,
-        status: 'draft',
+        // O default é 'pago': o caminho comum é vender e receber na hora.
+        // Quem vendeu fiado marca na tela; validado aqui porque o navegador é
+        // o único lugar onde a regra pode ser burlada.
+        status: ehPagamento(body.status) ? body.status : 'pago',
+        entrega: ehEntrega(body.entrega) ? body.entrega : 'pendente',
         delivery_date: body.delivery_date || null,
         delivery_period: body.delivery_period || null,
         notes: body.notes || null,
@@ -387,6 +400,7 @@ export async function GET(request: NextRequest) {
           cliente_nome,
           faturamento_total,
           status,
+          entrega,
           venda_itens (
             id,
             produto_id,
@@ -399,6 +413,11 @@ export async function GET(request: NextRequest) {
         `
       )
       .eq('workspace_id', user.id)
+      // Cancelada não é faturamento. O filtro fica na CONSULTA, e não em
+      // lib/metrics.ts, porque quem chama aquelas funções são três lugares
+      // diferentes: barrando na origem, nenhum caller novo pode esquecer e
+      // somar dinheiro que não entrou.
+      .neq('status', 'cancelada')
       .gte('data', primeiroDiaDoMes);
 
     let consultaAtendimentosDoMes = supabase
@@ -479,7 +498,11 @@ export async function GET(request: NextRequest) {
 // ============================================
 
 /**
- * Recalcula os totais da cliente a partir das vendas que SOBRARAM.
+ * Recalcula os totais da cliente a partir das vendas que VALEM.
+ *
+ * Serve a dois caminhos: a venda excluída (some do banco) e a venda cancelada
+ * (fica no banco, mas não conta). Nos dois casos a pergunta é a mesma — quais
+ * compras dessa cliente ainda valem? — e a resposta se obtém do mesmo jeito.
  *
  * A tentação aqui é decrementar: tirar 1 de `total_orders` e o valor de
  * `total_spent`. Isso funciona pros dois primeiros campos, mas quebra no
@@ -510,7 +533,11 @@ async function recalcularTotaisDaCliente(
       .from('vendas_diarias')
       .select('data, faturamento_total, shipping_cost')
       .eq('workspace_id', workspaceId)
-      .eq('customer_id', customerId);
+      .eq('customer_id', customerId)
+      // Cancelada não entra no histórico da cliente: ela não comprou. Sem
+      // isto, cancelar deixaria a pessoa marcada como compradora e ela sumiria
+      // do filtro "Nunca compraram", que é a lista de prospecção.
+      .neq('status', 'cancelada');
 
     if (error) throw error;
 
@@ -609,6 +636,120 @@ export async function DELETE(request: NextRequest) {
     });
   } catch (error) {
     console.error('Erro ao excluir venda:', error);
+    return NextResponse.json(
+      {
+        error: 'Erro interno do servidor',
+        details: error instanceof Error ? error.message : 'Desconhecido',
+      },
+      { status: 500 },
+    );
+  }
+}
+
+// ============================================
+// PATCH - Situação da venda (pagamento e entrega)
+// ============================================
+
+/**
+ * Muda o pagamento, a entrega, ou os dois.
+ *
+ * Aceita os campos separadamente e só mexe no que veio: marcar "entregue" não
+ * pode mudar o pagamento por tabela. É o mesmo desenho do PATCH de cliente.
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const supabase = await getRouteHandlerSupabaseClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    const id = request.nextUrl.searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'Informe qual venda alterar.' }, { status: 400 });
+    }
+
+    const body: { status?: unknown; entrega?: unknown } = await request.json();
+
+    const patch: { status?: Pagamento; entrega?: Entrega } = {};
+
+    // Valida na rota em vez de deixar o CHECK do banco recusar: o erro do
+    // Postgres não diz nada que a aluna possa entender, e o navegador é o
+    // único lugar onde a regra da tela pode ser burlada.
+    if (body.status !== undefined) {
+      if (!ehPagamento(body.status)) {
+        return NextResponse.json({ error: 'Situação de pagamento inválida.' }, { status: 400 });
+      }
+      patch.status = body.status;
+    }
+
+    if (body.entrega !== undefined) {
+      if (!ehEntrega(body.entrega)) {
+        return NextResponse.json({ error: 'Situação de entrega inválida.' }, { status: 400 });
+      }
+      patch.entrega = body.entrega;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json({ error: 'Nada para alterar.' }, { status: 400 });
+    }
+
+    // Busca antes pra distinguir "não existe" de "não é sua" (a RLS devolveria
+    // sucesso silencioso), e pra saber se o cancelamento MUDOU — só então vale
+    // refazer os totais da cliente.
+    const { data: antes, error: buscaError } = await supabase
+      .from('vendas_diarias')
+      .select('id, customer_id, status')
+      .eq('id', id)
+      .eq('workspace_id', user.id)
+      .maybeSingle();
+
+    if (buscaError) {
+      return NextResponse.json(
+        { error: 'Erro ao buscar a venda', details: buscaError.message },
+        { status: 500 },
+      );
+    }
+    if (!antes) {
+      return NextResponse.json({ error: 'Venda não encontrada.' }, { status: 404 });
+    }
+
+    const { error: updateError } = await supabase
+      .from('vendas_diarias')
+      .update(patch)
+      .eq('id', id)
+      .eq('workspace_id', user.id);
+
+    if (updateError) {
+      return NextResponse.json(
+        { error: 'Erro ao alterar a venda', details: updateError.message },
+        { status: 500 },
+      );
+    }
+
+    // Cancelar (ou descancelar) muda o histórico da cliente tanto quanto
+    // excluir a venda: ela deixa de ter comprado, ou volta a ter. Sem este
+    // recálculo, uma venda cancelada continuaria contando em `total_spent` e a
+    // cliente ficaria fora do filtro "Nunca compraram" sem ter comprado nada.
+    //
+    // Só roda quando o cancelamento realmente mudou de estado — marcar
+    // "entregue" numa venda paga não mexe em total nenhum.
+    const cancelamentoMudou =
+      patch.status !== undefined &&
+      (antes.status === 'cancelada') !== (patch.status === 'cancelada');
+
+    if (cancelamentoMudou && antes.customer_id) {
+      await recalcularTotaisDaCliente(supabase, user.id, antes.customer_id);
+    }
+
+    return NextResponse.json({ success: true, message: 'Situação atualizada.' });
+  } catch (error) {
+    console.error('Erro ao alterar situação da venda:', error);
     return NextResponse.json(
       {
         error: 'Erro interno do servidor',
