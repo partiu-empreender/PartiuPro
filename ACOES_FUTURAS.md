@@ -97,23 +97,22 @@ adicionais · valor do frete · pagamento realizado · como conheceu a empresa
 **Dados internos:** código do pedido · número do pedido no mês · pediu feedback
 no Google ao cliente? · foi feito? · pediu feedback ao presenteado? · foi feito?
 
-### O que o banco já tem (e não custa nada expor)
+### Campos que já existiam no banco — RESOLVIDO em 2026-09-04
 
-Antes de criar coisa nova, vale saber que boa parte já existe e só não aparece
-na tela:
+Levantamento inicial desta seção estava **impreciso**, e a conferência campo a
+campo (contra o schema de produção) corrigiu:
 
-- `customers` já tem **`email`**, **`date_of_birth`** (aniversário) e
-  **`how_knew`** (como conheceu) — e `app/api/clientes/route.ts` já aceita os
-  três. Só o formulário não os oferece.
-- `vendas_diarias` já tem **`delivery_date`**, **`delivery_period`**,
-  **`shipping_cost`**, **`bairro`** e **`notes`** — nenhum aparece no formulário
-  de venda.
-- `customers.notes` é o "contexto", e as etiquetas de cliente e de ocasião já
-  existem (migrations 007 e 010).
+- `email` — existia no banco e na API, **faltava só na tela**. Adicionado.
+- `date_of_birth` e `notes` — já apareciam no formulário. A anotação anterior
+  dizia que faltavam; estava errada.
+- `how_knew` — existia **só como coluna e como tipo em `types/index.ts`**. Não
+  estava na API nem na tela. Adicionado nos dois.
+- `delivery_date`, `delivery_period`, `shipping_cost`, `bairro`, `notes` da
+  venda — a API já aceitava todos desde sempre, **nenhum aparecia no
+  formulário**. Adicionados num bloco recolhido.
 
-Ou seja: **expor os campos existentes já atende uma parte relevante do pedido
-sem migration nenhuma.** Foi a opção oferecida e adiada junto com o resto — vale
-retomar como primeiro passo quando o assunto voltar, porque é barato.
+Nenhuma migration foi necessária, como previsto. O que sobra desta seção é o
+que exige decisão de modelo (abaixo).
 
 ### O que exigiria decisão de modelo
 

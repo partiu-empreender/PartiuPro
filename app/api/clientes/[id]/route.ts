@@ -9,6 +9,8 @@ interface AtualizarClienteRequest {
   email?: string;
   notes?: string;
   date_of_birth?: string;
+  /** Como a cliente chegou: Instagram, Indicação, Google. */
+  how_knew?: string;
   tag_ids?: string[];
 }
 
@@ -28,7 +30,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       supabase
         .from('customers')
         .select(
-          `id, name, phone, email, notes, date_of_birth,
+          `id, name, phone, email, notes, date_of_birth, how_knew,
            total_orders, total_spent, last_order_at, created_at,
            customer_tag_links ( customer_tags ( id, nome, cor ) )`,
         )
@@ -101,6 +103,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (body.email !== undefined) patch.email = body.email.trim() || null;
     if (body.notes !== undefined) patch.notes = body.notes.trim() || null;
     if (body.date_of_birth !== undefined) patch.date_of_birth = body.date_of_birth || null;
+    if (body.how_knew !== undefined) patch.how_knew = body.how_knew.trim() || null;
 
     if (Object.keys(patch).length > 0) {
       const { error } = await supabase

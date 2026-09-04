@@ -60,6 +60,7 @@ interface Cliente {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  how_knew: string | null;
   // Aniversário e data de cadastro não aparecem no cartão, mas sustentam os
   // filtros de data e os lembretes automáticos — por isso vêm na listagem.
   date_of_birth: string | null;
@@ -123,7 +124,28 @@ interface ResultadoImportacao {
   etiquetasCriadas: string[];
 }
 
-const formVazio = { name: '', phone: '', email: '', notes: '', date_of_birth: '' };
+const formVazio = {
+  name: '',
+  phone: '',
+  email: '',
+  notes: '',
+  date_of_birth: '',
+  how_knew: '',
+};
+
+// De onde as clientes chegam. Sugestões, não lista fechada: a aluna digita o
+// que quiser (uma vende em feira, outra só por indicação), e o <datalist>
+// oferece as comuns sem impedir o resto. Fechar num <select> obrigaria quem
+// vende em bazar a marcar "Outros" e perder a informação.
+const ORIGENS_SUGERIDAS = [
+  'Instagram',
+  'Indicação',
+  'Google',
+  'WhatsApp',
+  'Facebook',
+  'Feira ou bazar',
+  'Cliente antiga',
+];
 
 export default function ClientesPage() {
   const router = useRouter();
@@ -355,6 +377,9 @@ export default function ClientesPage() {
       // apagava o aniversário da cliente — justo o campo de que dependem o
       // filtro de aniversariantes e o lembrete automático.
       date_of_birth: c.date_of_birth || '',
+      // Mesmo cuidado do aniversário logo acima: o PATCH grava o que recebe,
+      // então um campo ausente aqui seria apagado ao salvar a edição.
+      how_knew: c.how_knew || '',
     });
     setEtiquetasDoForm(c.etiquetas.map((e) => e.id));
     setErro('');
@@ -1007,6 +1032,37 @@ export default function ClientesPage() {
                   value={form.date_of_birth}
                   onChange={(e) => setForm((f) => ({ ...f, date_of_birth: e.target.value }))}
                 />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="cliente-email">E-mail</Label>
+                <Input
+                  id="cliente-email"
+                  type="email"
+                  autoComplete="off"
+                  placeholder="cliente@email.com"
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cliente-origem">Como conheceu você</Label>
+                {/* Campo livre com sugestões: a lista cobre o comum sem
+                    impedir quem vende em bazar de escrever o dela. */}
+                <Input
+                  id="cliente-origem"
+                  list="origens-de-cliente"
+                  autoComplete="off"
+                  placeholder="Instagram, indicação..."
+                  value={form.how_knew}
+                  onChange={(e) => setForm((f) => ({ ...f, how_knew: e.target.value }))}
+                />
+                <datalist id="origens-de-cliente">
+                  {ORIGENS_SUGERIDAS.map((origem) => (
+                    <option key={origem} value={origem} />
+                  ))}
+                </datalist>
               </div>
             </div>
             <div className="space-y-2">

@@ -47,6 +47,7 @@ interface ClienteDetalhe {
   email: string | null;
   notes: string | null;
   date_of_birth: string | null;
+  how_knew: string | null;
   total_orders: number | null;
   total_spent: number | null;
   last_order_at: string | null;
@@ -137,6 +138,15 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
         <h1 className="text-2xl font-bold sm:text-3xl">{cliente.name}</h1>
         {cliente.phone && (
           <p className="mt-1 text-muted-foreground">{formatarTelefone(cliente.phone)}</p>
+        )}
+        {cliente.email && <p className="text-muted-foreground">{cliente.email}</p>}
+        {/* De onde ela veio. Fica junto do contato, e não num cartão próprio,
+            porque é dado de identificação: responde "quem é essa pessoa",
+            não "quanto ela comprou". */}
+        {cliente.how_knew && (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Conheceu por <strong className="font-medium">{cliente.how_knew}</strong>
+          </p>
         )}
         {cliente.etiquetas.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1">

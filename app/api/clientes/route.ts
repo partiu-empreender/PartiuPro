@@ -9,13 +9,15 @@ interface CriarClienteRequest {
   email?: string;
   notes?: string;
   date_of_birth?: string;
+  /** Como a cliente chegou: Instagram, Indicação, Google. */
+  how_knew?: string;
   tag_ids?: string[];
 }
 
 // Colunas do cliente + etiquetas ligadas. O !inner não é usado de propósito:
 // cliente sem etiqueta precisa aparecer na lista.
 const SELECT_CLIENTE = `
-  id, name, phone, email, notes, date_of_birth,
+  id, name, phone, email, notes, date_of_birth, how_knew,
   total_orders, total_spent, last_order_at, created_at,
   customer_tag_links ( tag_id, customer_tags ( id, nome, cor ) )
 `;
@@ -113,6 +115,7 @@ export async function POST(request: NextRequest) {
         email: body.email?.trim() || null,
         notes: body.notes?.trim() || null,
         date_of_birth: body.date_of_birth || null,
+        how_knew: body.how_knew?.trim() || null,
       })
       .select('id')
       .single();

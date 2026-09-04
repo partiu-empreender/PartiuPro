@@ -24,6 +24,7 @@ import {
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import { hojeBrasil, motivoDataDeVendaInvalida, nomeDoMes, partesHojeBrasil } from '@/lib/datas';
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
+import { aplicarMascaraMoeda, parsearMoeda } from '@/lib/moeda';
 import { EtiquetaToggle, type Etiqueta } from '@/components/shared/EtiquetaBadge';
 import { ETIQUETAS_DE_VENDA_SUGERIDAS } from '@/lib/etiquetas';
 import {
@@ -41,6 +42,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Truck,
 } from 'lucide-react';
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -160,6 +163,17 @@ export default function DashboardPage() {
   const [etiquetasVenda, setEtiquetasVenda] = useState<Etiqueta[]>([]);
   const [ocasioesDaVenda, setOcasioesDaVenda] = useState<string[]>([]);
   const [criandoOcasiao, setCriandoOcasiao] = useState('');
+  // Dados da entrega. Ficam num bloco recolhido: registrar venda é o que a
+  // aluna faz todo dia, e cinco campos a mais sempre visíveis tornariam o
+  // caminho comum mais pesado pra atender o caso de quem entrega. Quem precisa
+  // abre; quem não precisa nem vê. As colunas já existiam no banco desde a
+  // migration 001 e nenhuma tela as oferecia.
+  const [entregaAberta, setEntregaAberta] = useState(false);
+  const [dataEntrega, setDataEntrega] = useState('');
+  const [periodoEntrega, setPeriodoEntrega] = useState('');
+  const [bairroEntrega, setBairroEntrega] = useState('');
+  const [freteVenda, setFreteVenda] = useState('');
+  const [observacaoVenda, setObservacaoVenda] = useState('');
   const [itens, setItens] = useState<NovoItemForm[]>([itemVazio()]);
   const [salvando, setSalvando] = useState(false);
   const [formError, setFormError] = useState('');
@@ -350,6 +364,12 @@ export default function DashboardPage() {
     setItens([itemVazio()]);
     setDataVenda(hojeBrasil());
     setOcasioesDaVenda([]);
+    setEntregaAberta(false);
+    setDataEntrega('');
+    setPeriodoEntrega('');
+    setBairroEntrega('');
+    setFreteVenda('');
+    setObservacaoVenda('');
     setFormError('');
     setAvisoRetroativo('');
     setShowRegistroVendaModal(true);
@@ -567,11 +587,18 @@ export default function DashboardPage() {
     (s) => !etiquetasVenda.some((e) => e.nome.toLowerCase() === s.nome.toLowerCase()),
   );
 
-  const totalVenda = itens.reduce((sum, item) => {
+  const subtotalItens = itens.reduce((sum, item) => {
     const qtd = parseFloat(item.quantidade) || 0;
     const preco = parseFloat(item.preco_unitario) || 0;
     return sum + qtd * preco;
   }, 0);
+
+  // O frete entra no total porque é assim que a venda é GRAVADA: a API soma
+  // itens + frete em `faturamento_total`. Mostrar só os itens faria o
+  // formulário exibir um número e a venda registrada aparecer com outro, e a
+  // aluna acharia que o sistema errou a conta.
+  const freteDaVenda = parsearMoeda(freteVenda) ?? 0;
+  const totalVenda = subtotalItens + freteDaVenda;
 
   const registrarVenda = async () => {
     setFormError('');
@@ -605,6 +632,11 @@ export default function DashboardPage() {
           data: dataVenda,
           tag_ids: ocasioesDaVenda.length ? ocasioesDaVenda : undefined,
           cliente_telefone: clienteTelefone.trim() || undefined,
+          delivery_date: dataEntrega || undefined,
+          delivery_period: periodoEntrega || undefined,
+          bairro: bairroEntrega.trim() || undefined,
+          shipping_cost: parsearMoeda(freteVenda) ?? undefined,
+          notes: observacaoVenda.trim() || undefined,
           items: itensValidos.map((item) => ({
             produto_id: item.produto_id,
             produto_nome: item.produto_nome.trim(),
@@ -1482,9 +1514,134 @@ export default function DashboardPage() {
                 </Button>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t">
-                <span className="text-sm text-muted-foreground">Total</span>
-                <span className="text-xl font-bold">R$ {totalVenda.toFixed(2)}</span>
+              {/* Entrega e observações — recolhido por padrão.
+
+                  Todos estes campos JÁ existiam no banco (migration 001) e
+                  nenhuma tela os oferecia: a aluna anotava data de entrega no
+                  caderno enquanto a coluna ficava vazia. Ficam atrás de um
+                  clique porque o caminho de todo dia é cliente + itens, e
+                  quem não entrega em domicílio não deveria rolar por cinco
+                  campos vazios pra chegar no botão de registrar. */}
+              <div className="rounded-2xl border">
+                <button
+                  type="button"
+                  onClick={() => setEntregaAberta((aberta) => !aberta)}
+                  aria-expanded={entregaAberta}
+                  className="flex w-full items-center justify-between gap-2 px-4 py-3 text-sm font-medium"
+                >
+                  <span className="flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-muted-foreground" />
+                    Entrega e observações
+                    <span className="font-normal text-muted-foreground">(opcional)</span>
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                      entregaAberta ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {entregaAberta && (
+                  <div className="space-y-4 border-t px-4 py-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="venda-entrega-data">
+                          Data da entrega
+                        </label>
+                        {/* Sem `max`: entrega é no futuro, ao contrário da data
+                            da venda. É a diferença entre quando o dinheiro
+                            entrou e quando a cesta sai. */}
+                        <Input
+                          id="venda-entrega-data"
+                          type="date"
+                          value={dataEntrega}
+                          onChange={(e) => setDataEntrega(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="venda-entrega-periodo">
+                          Período
+                        </label>
+                        {/* Os três valores são os que o banco aceita: a coluna
+                            tem CHECK IN ('morning','afternoon','evening'), e
+                            qualquer outro texto faria o insert falhar. */}
+                        <select
+                          id="venda-entrega-periodo"
+                          value={periodoEntrega}
+                          onChange={(e) => setPeriodoEntrega(e.target.value)}
+                          className="flex h-10 w-full rounded-xl border border-input bg-white/70 px-4 py-2 text-sm backdrop-blur-md transition-colors focus-visible:border-primary focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                        >
+                          <option value="">Sem período definido</option>
+                          <option value="morning">Manhã</option>
+                          <option value="afternoon">Tarde</option>
+                          <option value="evening">Noite</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="venda-bairro">
+                          Bairro
+                        </label>
+                        <Input
+                          id="venda-bairro"
+                          placeholder="Copacabana"
+                          value={bairroEntrega}
+                          onChange={(e) => setBairroEntrega(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium" htmlFor="venda-frete">
+                          Frete
+                        </label>
+                        {/* Texto com máscara, não type="number": em teclado
+                            brasileiro a vírgula não entra num campo numérico e
+                            o valor some (mesma razão da calculadora). */}
+                        <Input
+                          id="venda-frete"
+                          inputMode="decimal"
+                          placeholder="R$ 0,00"
+                          value={freteVenda}
+                          onChange={(e) => setFreteVenda(aplicarMascaraMoeda(e.target.value))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium" htmlFor="venda-observacao">
+                        Observações
+                      </label>
+                      <textarea
+                        id="venda-observacao"
+                        rows={2}
+                        placeholder="Mensagem do cartão, ponto de referência, combinado com a cliente."
+                        className="flex w-full rounded-xl border border-input bg-white/70 px-4 py-2 text-sm backdrop-blur-md transition-colors placeholder:text-muted-foreground focus-visible:border-primary focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                        value={observacaoVenda}
+                        onChange={(e) => setObservacaoVenda(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1 pt-2 border-t">
+                {freteDaVenda > 0 && (
+                  <>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Itens</span>
+                      <span>{brl(subtotalItens)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Frete</span>
+                      <span>{brl(freteDaVenda)}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total</span>
+                  <span className="text-xl font-bold">{brl(totalVenda)}</span>
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
