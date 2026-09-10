@@ -6,6 +6,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PricingCalculator from '@/components/PricingCalculator';
 import { calcularRelatorioMensal, type RelatorioMensal } from '@/lib/metrics';
@@ -40,6 +41,7 @@ import {
   Plus,
   DollarSign,
   Trash2,
+  Pencil,
   TrendingUp,
   Users,
   Target,
@@ -211,6 +213,17 @@ export default function DashboardPage() {
   // apagar antes de confirmar, principalmente quando a mesma cliente comprou
   // duas vezes no mesmo dia.
   const [vendaParaExcluir, setVendaParaExcluir] = useState<VendaDiaria | null>(null);
+
+  // Venda em edicao. Existe porque errar a data era um beco sem saida: a venda
+  // ia pro mes errado, bagunçava faturamento e meta, e nao havia como corrigir
+  // sem excluir e refazer — perdendo etiquetas e o vinculo com a cliente.
+  const [vendaEmEdicao, setVendaEmEdicao] = useState<VendaDiaria | null>(null);
+  const [edicaoData, setEdicaoData] = useState('');
+  const [edicaoCliente, setEdicaoCliente] = useState('');
+  const [edicaoItens, setEdicaoItens] = useState<NovoItemForm[]>([]);
+  const [edicaoFrete, setEdicaoFrete] = useState('');
+  const [erroEdicao, setErroEdicao] = useState('');
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [excluindoVenda, setExcluindoVenda] = useState(false);
   const [erroExclusao, setErroExclusao] = useState('');
 
@@ -348,6 +361,84 @@ export default function DashboardPage() {
   // Exclui de vez — não é rascunho nem lixeira. As alunas pediram porque hoje
   // uma venda digitada errada (data trocada, valor errado) fica no faturamento
   // pra sempre, e elas não têm como corrigir sozinhas.
+  // Abre a edicao ja preenchida com o que a venda tem hoje.
+  const abrirEdicao = (venda: VendaDiaria) => {
+    setErroEdicao('');
+    setVendaEmEdicao(venda);
+    setEdicaoData(venda.data);
+    setEdicaoCliente(venda.cliente_nome);
+    setEdicaoItens(
+      (venda.venda_itens || []).map((i) => ({
+        produto_nome: i.produto_nome,
+        quantidade: String(i.quantidade),
+        preco_unitario: String(i.preco_unitario),
+      })),
+    );
+    // `faturamento_total` guarda itens + frete. O frete e a diferença.
+    const somaDosItens = (venda.venda_itens || []).reduce((soma, i) => soma + i.subtotal, 0);
+    const frete = venda.faturamento_total - somaDosItens;
+    setEdicaoFrete(frete > 0 ? frete.toFixed(2) : '');
+  };
+
+  const salvarEdicao = async () => {
+    if (!vendaEmEdicao) return;
+    setErroEdicao('');
+
+    const itensPreenchidos = edicaoItens.filter((i) => !itemEstaVazio(i));
+    if (itensPreenchidos.length === 0) {
+      setErroEdicao('A venda precisa de pelo menos um item.');
+      return;
+    }
+    if (!edicaoCliente.trim()) {
+      setErroEdicao('Informe o nome da cliente.');
+      return;
+    }
+
+    const motivo = motivoDataDeVendaInvalida(edicaoData);
+    if (motivo) {
+      setErroEdicao(motivo);
+      return;
+    }
+
+    setSalvandoEdicao(true);
+    try {
+      const res = await fetch(`/api/vendas?id=${vendaEmEdicao.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: edicaoData,
+          cliente_nome: edicaoCliente.trim(),
+          // `parsearMoeda` porque Number('100.000') devolve 100 — o separador
+          // de milhar brasileiro viraria um valor 1000x menor.
+          shipping_cost: edicaoFrete.trim() ? parsearMoeda(edicaoFrete) : 0,
+          items: itensPreenchidos.map((i) => ({
+            produto_nome: i.produto_nome.trim(),
+            quantidade: Number(i.quantidade) || 1,
+            preco_unitario: parsearMoeda(i.preco_unitario),
+          })),
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        setErroEdicao(result.error || 'Não foi possível salvar as alterações.');
+        return;
+      }
+
+      // Se a data mudou de dia, leva o seletor junto: senao a venda "some" e
+      // parece que a edicao falhou.
+      if (edicaoData !== vendaEmEdicao.data) {
+        setDiaEscolhido(edicaoData);
+      }
+      setVendaEmEdicao(null);
+      await carregarMetricas();
+    } catch {
+      setErroEdicao('Não foi possível salvar as alterações. Tente novamente.');
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  };
+
   const excluirVenda = async () => {
     if (!vendaParaExcluir) return;
     setErroExclusao('');
@@ -1280,6 +1371,14 @@ export default function DashboardPage() {
                           </button>
                           <button
                             type="button"
+                            aria-label={`Editar a venda de ${venda.cliente_nome}`}
+                            onClick={() => abrirEdicao(venda)}
+                            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
                             aria-label={`Excluir a venda de ${venda.cliente_nome}`}
                             onClick={() => {
                               setErroExclusao('');
@@ -1961,6 +2060,138 @@ export default function DashboardPage() {
       {/* Confirmação de exclusão. Mostra cliente, data e valor porque a lista
           pode ter duas vendas parecidas da mesma pessoa — e isto não tem
           desfazer. */}
+      <Dialog
+        open={vendaEmEdicao !== null}
+        onOpenChange={(aberto) => !aberto && setVendaEmEdicao(null)}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar venda</DialogTitle>
+            <DialogDescription>
+              Corrija a data, a cliente ou os itens. O faturamento e as metas se ajustam sozinhos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {erroEdicao && (
+              <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+                {erroEdicao}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="edicao-data">Data da venda</Label>
+              <Input
+                id="edicao-data"
+                type="date"
+                max={hojeBrasil()}
+                value={edicaoData}
+                onChange={(e) => setEdicaoData(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edicao-cliente">Cliente</Label>
+              <Input
+                id="edicao-cliente"
+                value={edicaoCliente}
+                onChange={(e) => setEdicaoCliente(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Itens</Label>
+              {edicaoItens.map((item, indice) => (
+                <div key={indice} className="flex gap-2">
+                  <Input
+                    aria-label={`Nome do item ${indice + 1}`}
+                    placeholder="Item"
+                    className="flex-1"
+                    value={item.produto_nome}
+                    onChange={(e) => {
+                      setEdicaoItens(
+                        edicaoItens.map((atual, i) =>
+                          i === indice ? { ...atual, produto_nome: e.target.value } : atual,
+                        ),
+                      );
+                    }}
+                  />
+                  <Input
+                    aria-label={`Quantidade do item ${indice + 1}`}
+                    inputMode="numeric"
+                    className="w-16"
+                    value={item.quantidade}
+                    onChange={(e) => {
+                      setEdicaoItens(
+                        edicaoItens.map((atual, i) =>
+                          i === indice
+                            ? { ...atual, quantidade: e.target.value.replace(/\D/g, '') }
+                            : atual,
+                        ),
+                      );
+                    }}
+                  />
+                  <Input
+                    aria-label={`Preço do item ${indice + 1}`}
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    className="w-28"
+                    value={item.preco_unitario}
+                    onChange={(e) => {
+                      setEdicaoItens(
+                        edicaoItens.map((atual, i) =>
+                          i === indice
+                            ? { ...atual, preco_unitario: aplicarMascaraMoeda(e.target.value) }
+                            : atual,
+                        ),
+                      );
+                    }}
+                  />
+                  {edicaoItens.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label={`Remover item ${indice + 1}`}
+                      onClick={() => setEdicaoItens(edicaoItens.filter((_, i) => i !== indice))}
+                      className="rounded-full p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setEdicaoItens([...edicaoItens, itemVazio()])}
+              >
+                Adicionar item
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edicao-frete">Frete</Label>
+              <Input
+                id="edicao-frete"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={edicaoFrete}
+                onChange={(e) => setEdicaoFrete(aplicarMascaraMoeda(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setVendaEmEdicao(null)} disabled={salvandoEdicao}>
+              Cancelar
+            </Button>
+            <Button onClick={salvarEdicao} disabled={salvandoEdicao}>
+              {salvandoEdicao ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={vendaParaExcluir !== null}
         onOpenChange={(aberto) => !aberto && setVendaParaExcluir(null)}

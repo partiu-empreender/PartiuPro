@@ -18,6 +18,7 @@ import {
   recorteDoMes,
 } from '@/lib/datas';
 import { normalizarTelefone } from '@/lib/telefone';
+import { recalcularTotaisDaVenda } from '@/lib/edicao-venda';
 import {
   ehEntrega,
   ehPagamento,
@@ -674,9 +675,32 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Informe qual venda alterar.' }, { status: 400 });
     }
 
-    const body: { status?: unknown; entrega?: unknown } = await request.json();
+    const body: {
+      status?: unknown;
+      entrega?: unknown;
+      data?: unknown;
+      cliente_nome?: unknown;
+      shipping_cost?: unknown;
+      desconto_percentual?: unknown;
+      delivery_date?: unknown;
+      delivery_period?: unknown;
+      bairro?: unknown;
+      notes?: unknown;
+      items?: unknown;
+    } = await request.json();
 
-    const patch: { status?: Pagamento; entrega?: Entrega } = {};
+    const patch: {
+      status?: Pagamento;
+      entrega?: Entrega;
+      data?: string;
+      cliente_nome?: string;
+      shipping_cost?: number;
+      faturamento_total?: number;
+      delivery_date?: string | null;
+      delivery_period?: string | null;
+      bairro?: string | null;
+      notes?: string | null;
+    } = {};
 
     // Valida na rota em vez de deixar o CHECK do banco recusar: o erro do
     // Postgres não diz nada que a aluna possa entender, e o navegador é o
@@ -695,7 +719,74 @@ export async function PATCH(request: NextRequest) {
       patch.entrega = body.entrega;
     }
 
-    if (Object.keys(patch).length === 0) {
+    // A DATA E EDITAVEL, e e o motivo principal desta rota ter crescido.
+    //
+    // Quem registrava uma venda com a data errada nao tinha saida: nao havia
+    // como corrigir nem excluir pela tela, e a venda ficava no mes errado
+    // bagunçando faturamento e meta. Excluir e recomeçar perdia as etiquetas
+    // e o vinculo com a cliente.
+    if (body.data !== undefined) {
+      if (typeof body.data !== 'string') {
+        return NextResponse.json({ error: 'Data inválida.' }, { status: 400 });
+      }
+      const motivo = motivoDataDeVendaInvalida(body.data.trim());
+      if (motivo) {
+        return NextResponse.json({ error: motivo }, { status: 400 });
+      }
+      patch.data = body.data.trim();
+    }
+
+    if (body.cliente_nome !== undefined) {
+      if (typeof body.cliente_nome !== 'string' || !body.cliente_nome.trim()) {
+        return NextResponse.json({ error: 'A venda precisa de um nome de cliente.' }, { status: 400 });
+      }
+      patch.cliente_nome = body.cliente_nome.trim();
+    }
+
+    // Campos que podem ser APAGADOS: string vazia vira null, e nao "não mexer".
+    for (const campo of ['delivery_date', 'delivery_period', 'bairro', 'notes'] as const) {
+      if (body[campo] !== undefined) {
+        const valor = body[campo];
+        if (valor !== null && typeof valor !== 'string') {
+          return NextResponse.json({ error: `Campo ${campo} inválido.` }, { status: 400 });
+        }
+        patch[campo] = valor && valor.trim() ? valor.trim() : null;
+      }
+    }
+
+    // ITENS E DINHEIRO
+    //
+    // Trocar os itens obriga a refazer o `faturamento_total`, porque a coluna
+    // guarda itens + frete (ver o POST). Recalcular aqui, e nao confiar num
+    // total vindo da tela, e o que impede a venda de mentir sobre o proprio
+    // valor.
+    const itensNovos = Array.isArray(body.items) ? (body.items as VendaItem[]) : null;
+    const mexeuEmDinheiro = itensNovos !== null || body.shipping_cost !== undefined;
+
+    let frete = 0;
+    if (body.shipping_cost !== undefined) {
+      frete = Number(body.shipping_cost);
+      if (!Number.isFinite(frete) || frete < 0) {
+        return NextResponse.json({ error: 'Frete inválido.' }, { status: 400 });
+      }
+    }
+
+    if (itensNovos !== null) {
+      if (itensNovos.length === 0) {
+        return NextResponse.json({ error: 'A venda precisa de pelo menos um item.' }, { status: 400 });
+      }
+      if (itensNovos.some((i) => !i.produto_nome?.trim())) {
+        return NextResponse.json({ error: 'Todo item precisa de um nome.' }, { status: 400 });
+      }
+      if (itensNovos.some((i) => !Number.isFinite(i.quantidade) || i.quantidade <= 0)) {
+        return NextResponse.json({ error: 'Quantidade inválida em algum item.' }, { status: 400 });
+      }
+      if (itensNovos.some((i) => !Number.isFinite(i.preco_unitario) || i.preco_unitario < 0)) {
+        return NextResponse.json({ error: 'Preço inválido em algum item.' }, { status: 400 });
+      }
+    }
+
+    if (Object.keys(patch).length === 0 && !mexeuEmDinheiro) {
       return NextResponse.json({ error: 'Nada para alterar.' }, { status: 400 });
     }
 
@@ -704,7 +795,7 @@ export async function PATCH(request: NextRequest) {
     // refazer os totais da cliente.
     const { data: antes, error: buscaError } = await supabase
       .from('vendas_diarias')
-      .select('id, customer_id, status')
+      .select('id, customer_id, status, shipping_cost, faturamento_total')
       .eq('id', id)
       .eq('workspace_id', user.id)
       .maybeSingle();
@@ -717,6 +808,20 @@ export async function PATCH(request: NextRequest) {
     }
     if (!antes) {
       return NextResponse.json({ error: 'Venda não encontrada.' }, { status: 404 });
+    }
+
+    // Com itens novos, o total e refeito a partir DELES; sem itens novos mas
+    // com frete novo, so a parcela do frete troca — preservando o valor dos
+    // itens que ja estava gravado.
+    if (mexeuEmDinheiro) {
+      const totais = recalcularTotaisDaVenda(
+        itensNovos,
+        body.shipping_cost !== undefined ? frete : undefined,
+        Number(antes.faturamento_total) || 0,
+        Number(antes.shipping_cost) || 0,
+      );
+      patch.faturamento_total = totais.faturamento_total;
+      patch.shipping_cost = totais.shipping_cost;
     }
 
     const { error: updateError } = await supabase
@@ -739,15 +844,64 @@ export async function PATCH(request: NextRequest) {
     //
     // Só roda quando o cancelamento realmente mudou de estado — marcar
     // "entregue" numa venda paga não mexe em total nenhum.
+    // Os itens sao TROCADOS, nao mesclados: apaga e reinsere. Mesclar exigiria
+    // casar item a item por identidade que a tela nao tem, e o volume aqui e de
+    // poucas linhas por venda.
+    if (itensNovos !== null) {
+      const idsDoCatalogo = itensNovos
+        .map((i) => i.produto_id)
+        .filter((idProduto): idProduto is string => Boolean(idProduto));
+
+      // O tipo vem do CATALOGO, igual ao POST: senao o ranking por categoria
+      // poderia ser falsificado por um cliente adulterado.
+      const tipoPorProduto = new Map<string, TipoItem>();
+      if (idsDoCatalogo.length > 0) {
+        const { data: produtosDoCatalogo } = await supabase
+          .from('products')
+          .select('id, tipo')
+          .in('id', idsDoCatalogo);
+        for (const produto of produtosDoCatalogo || []) {
+          tipoPorProduto.set(produto.id, produto.tipo === 'adicional' ? 'adicional' : 'produto');
+        }
+      }
+
+      await supabase.from('venda_itens').delete().eq('venda_id', id);
+
+      const { error: itensError } = await supabase.from('venda_itens').insert(
+        itensNovos.map((i) => ({
+          venda_id: id,
+          produto_id: i.produto_id || null,
+          produto_nome: i.produto_nome.trim(),
+          quantidade: i.quantidade,
+          preco_unitario: i.preco_unitario,
+          subtotal: i.quantidade * i.preco_unitario,
+          tipo:
+            (i.produto_id && tipoPorProduto.get(i.produto_id)) ||
+            (i.tipo === 'adicional' ? 'adicional' : 'produto'),
+        })),
+      );
+
+      if (itensError) {
+        return NextResponse.json(
+          { error: 'A venda foi alterada, mas os itens não. Confira e tente de novo.', details: itensError.message },
+          { status: 500 },
+        );
+      }
+    }
+
     const cancelamentoMudou =
       patch.status !== undefined &&
       (antes.status === 'cancelada') !== (patch.status === 'cancelada');
 
-    if (cancelamentoMudou && antes.customer_id) {
+    // Alem do cancelamento, agora o VALOR e a DATA tambem mexem no historico da
+    // cliente: `total_spent` e `last_order_at` saem dai.
+    const precisaRecalcular = cancelamentoMudou || mexeuEmDinheiro || patch.data !== undefined;
+
+    if (precisaRecalcular && antes.customer_id) {
       await recalcularTotaisDaCliente(supabase, user.id, antes.customer_id);
     }
 
-    return NextResponse.json({ success: true, message: 'Situação atualizada.' });
+    return NextResponse.json({ success: true, message: 'Venda atualizada.' });
   } catch (error) {
     console.error('Erro ao alterar situação da venda:', error);
     return NextResponse.json(
