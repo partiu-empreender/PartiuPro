@@ -8,6 +8,7 @@ import PageShell from '@/components/shared/PageShell';
 import CartaoIndicador from '@/components/shared/CartaoIndicador';
 import { cn } from '@/lib/utils';
 import { ROTULO_DO_PASSO, type PassoDoFunil } from '@/lib/ativacao';
+import { resumirVendas } from '@/lib/visao-de-vendas';
 
 interface Metricas {
   vendas: number;
@@ -25,6 +26,8 @@ interface Produto {
   name: string;
   price: number;
   cost: number;
+  tipo?: 'produto' | 'adicional';
+  is_active?: boolean;
 }
 
 interface VendaItemView {
@@ -37,7 +40,6 @@ interface VendaItemView {
 interface Venda {
   id: string;
   data: string;
-  cliente_nome: string;
   faturamento_total: number;
   venda_itens: VendaItemView[];
 }
@@ -74,6 +76,11 @@ interface DetalheData {
 
 const POLL_MS = 20000;
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// T12:00 e proposital: a data vem como 'AAAA-MM-DD' e, sem hora, o navegador
+// interpreta como meia-noite UTC — que no Brasil ainda e o dia anterior.
+const fmtDia = (iso: string) =>
+  new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
 const COR_DO_PASSO: Record<PassoDoFunil, string> = {
   nunca_entrou: 'bg-destructive/10 text-destructive',
@@ -136,8 +143,26 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
     );
   }
 
+  // Filtros do catalogo. Ficam na tela, e nao na API: com dezenas de itens por
+  // aluna, filtrar no servidor so adicionaria uma ida e volta pra cada clique.
+  const [filtroCategoria, setFiltroCategoria] = useState<'todos' | 'produto' | 'adicional'>('todos');
+  const [ordemPreco, setOrdemPreco] = useState<'cadastro' | 'barato' | 'caro'>('cadastro');
+
   const { perfil, conta, metricas, meta_mensal, produtos, vendas_recentes, atendimentos_recentes } =
     dados;
+  // Catalogo filtrado e ordenado. `[...produtos]` antes de ordenar porque
+  // `sort` altera o array no lugar — mexer no que veio da API faria a ordem
+  // mudar sozinha entre renders.
+  const catalogoFiltrado = [...produtos]
+    .filter((p) =>
+      filtroCategoria === 'todos' ? true : (p.tipo ?? 'produto') === filtroCategoria,
+    )
+    .sort((a, b) => {
+      if (ordemPreco === 'barato') return a.price - b.price;
+      if (ordemPreco === 'caro') return b.price - a.price;
+      return 0; // ordem de cadastro: a API ja devolve por created_at
+    });
+
   const metaAlvo = meta_mensal > 0 ? meta_mensal : 0;
   const percentualMeta = metaAlvo > 0 ? (metricas.faturamento_mes / metaAlvo) * 100 : 0;
 
@@ -255,16 +280,57 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Produtos ({produtos.length})</CardTitle>
+            <CardTitle>Catálogo ({catalogoFiltrado.length})</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {produtos.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum produto cadastrado.</p>
+          <CardContent className="space-y-3">
+            {/* Filtros pedidos: categoria (produto/adicional) e preco. */}
+            <div className="flex flex-wrap gap-2">
+              <select
+                aria-label="Filtrar por categoria"
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={filtroCategoria}
+                onChange={(e) =>
+                  setFiltroCategoria(e.target.value as 'todos' | 'produto' | 'adicional')
+                }
+              >
+                <option value="todos">Todas as categorias</option>
+                <option value="produto">Só produtos</option>
+                <option value="adicional">Só adicionais</option>
+              </select>
+
+              <select
+                aria-label="Ordenar por preço"
+                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                value={ordemPreco}
+                onChange={(e) => setOrdemPreco(e.target.value as 'cadastro' | 'barato' | 'caro')}
+              >
+                <option value="cadastro">Ordem de cadastro</option>
+                <option value="barato">Do mais barato</option>
+                <option value="caro">Do mais caro</option>
+              </select>
+            </div>
+
+            {catalogoFiltrado.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {produtos.length === 0
+                  ? 'Nenhum item cadastrado.'
+                  : 'Nenhum item com esse filtro.'}
+              </p>
             ) : (
-              produtos.map((p) => (
-                <div key={p.id} className="flex items-center justify-between border-b pb-2 text-sm last:border-0">
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-muted-foreground">{brl(p.price)} · custo {brl(p.cost)}</span>
+              catalogoFiltrado.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-2 border-b pb-2 text-sm last:border-0">
+                  <span className="min-w-0 truncate font-medium">
+                    {p.name}
+                    {p.tipo === 'adicional' && (
+                      <span className="ml-1 text-xs text-muted-foreground">(adicional)</span>
+                    )}
+                    {p.is_active === false && (
+                      <span className="ml-1 text-xs text-muted-foreground">(oculto)</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {brl(p.price)} · custo {brl(p.cost)}
+                  </span>
                 </div>
               ))
             )}
@@ -290,28 +356,97 @@ export default function AlunaDetalhe({ workspaceId }: { workspaceId: string }) {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Vendas recentes (mês atual)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {vendas_recentes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma venda registrada este mês.</p>
-          ) : (
-            vendas_recentes.map((v) => (
-              <div key={v.id} className="flex items-center justify-between border-b pb-2 text-sm last:border-0">
-                <div>
-                  <span className="font-medium">{v.cliente_nome}</span>
-                  <span className="ml-2 text-muted-foreground">
-                    {(v.venda_itens || []).map((i) => i.produto_nome).join(', ') || 'Sem itens'}
-                  </span>
-                </div>
-                <span className="font-semibold">{brl(v.faturamento_total)}</span>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+      {/* VISAO DAS VENDAS DO MES — quanto, quando e o que.
+          
+          Aqui havia uma lista nome a nome: "Maria comprou X, Joana comprou Y".
+          Isso responde "quem comprou", que e a pergunta da ALUNA — ela conhece
+          a Maria. Pra mentora, que olha 68 alunas, o nome da cliente final nao
+          diz nada: sao pessoas que ela nunca vai encontrar.
+          
+          A troca tambem tira da mentora nomes de clientes finais, que sao dados
+          de terceiros que ela nao precisa pra orientar a aluna. */}
+      {(() => {
+        const resumo = resumirVendas(vendas_recentes);
+
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Vendas do mês</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {resumo.vendas === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma venda registrada este mês.</p>
+              ) : (
+                <>
+                  {/* QUANTO */}
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Faturamento
+                      </p>
+                      <p className="text-2xl font-bold">{brl(resumo.faturamento)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Vendas</p>
+                      <p className="text-2xl font-bold">{resumo.vendas}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Ticket médio
+                      </p>
+                      <p className="text-2xl font-bold">{brl(resumo.ticketMedio)}</p>
+                    </div>
+                  </div>
+
+                  {/* QUANDO */}
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold">Quando vendeu</h3>
+                    {resumo.melhorDia && (
+                      <p className="mb-2 text-sm text-muted-foreground">
+                        Melhor dia: {fmtDia(resumo.melhorDia.data)} ·{' '}
+                        {brl(resumo.melhorDia.faturamento)}
+                      </p>
+                    )}
+                    <div className="space-y-1">
+                      {resumo.porDia.slice(0, 10).map((dia) => (
+                        <div
+                          key={dia.data}
+                          className="flex items-center justify-between border-b pb-1 text-sm last:border-0"
+                        >
+                          <span>{fmtDia(dia.data)}</span>
+                          <span className="text-muted-foreground">
+                            {dia.vendas} {dia.vendas === 1 ? 'venda' : 'vendas'}
+                          </span>
+                          <span className="font-semibold">{brl(dia.faturamento)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* O QUE */}
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold">O que vendeu</h3>
+                    <div className="space-y-1">
+                      {resumo.porProduto.slice(0, 10).map((produto) => (
+                        <div
+                          key={produto.nome}
+                          className="flex items-center justify-between border-b pb-1 text-sm last:border-0"
+                        >
+                          <span className="min-w-0 truncate">{produto.nome}</span>
+                          <span className="shrink-0 px-3 text-muted-foreground">
+                            {produto.quantidade}×
+                          </span>
+                          <span className="shrink-0 font-semibold">{brl(produto.faturamento)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
     </PageShell>
   );
 }

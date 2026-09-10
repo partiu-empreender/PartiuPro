@@ -37,13 +37,17 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         .single(),
       supabaseAdmin
         .from('products')
-        .select('id, name, price, cost, created_at')
+        .select('id, name, price, cost, tipo, is_active, created_at')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: true }),
       supabaseAdmin
         .from('vendas_diarias')
         .select(
-          `id, data, cliente_nome, faturamento_total, status,
+          // `cliente_nome` NAO vem mais: a tela agora mostra a visao agregada
+          // (quanto/quando/o que) em vez da lista nome a nome, e nome de
+          // cliente final e dado de terceiro que a mentora nao precisa pra
+          // orientar a aluna. Nao trafega o que nao se usa.
+          `id, data, faturamento_total, status,
           venda_itens ( id, produto_nome, quantidade, preco_unitario, subtotal )`,
         )
         .eq('workspace_id', workspaceId)
