@@ -1,20 +1,37 @@
 'use client';
 
 /**
- * A tela para onde o link do e-mail aponta.
+ * Onde a pessoa cria a senha nova.
  *
- * Quando a pessoa clica no link, o Supabase abre uma sessão de recuperação e
- * devolve os tokens no FRAGMENTO da URL (#access_token=...), não na query.
- * Fragmento não chega ao servidor — só o navegador o enxerga —, e é por isso
- * que esta tela é client-side e chama `setSession` na mão: sem esse passo o
- * link abriria uma tela deslogada e a troca de senha falharia sem explicação.
+ * POR QUE CÓDIGO DIGITADO, E NÃO SÓ O LINK
+ *
+ * O fluxo original era só o link do e-mail, e ele falhava de forma
+ * intermitente. A causa foi confirmada em teste, com token real: um link
+ * gerado há segundos, aberto num navegador limpo, já volta com
+ * `otp_expired`.
+ *
+ * O culpado é o pré-carregamento de e-mail — clientes de e-mail e scanners de
+ * segurança abrem os links sozinhos pra verificar ameaças. Como o token é de
+ * USO ÚNICO, ele é gasto antes de a pessoa clicar. Aparece nos logs do
+ * Supabase como um `HEAD` no link um segundo antes do `GET` de verdade.
+ *
+ * Nenhum código do nosso lado conserta isso: quando o request chega aqui, o
+ * token já morreu. Uma aluna precisou de quatro tentativas em cinco minutos
+ * até acertar a janela.
+ *
+ * A saída é a que a própria documentação do Supabase recomenda: mandar um
+ * CÓDIGO pra pessoa digitar. Pré-carregador não digita código, então o
+ * problema simplesmente deixa de existir.
+ *
+ * O link continua sendo aceito, para quem já tem um e-mail antigo na caixa de
+ * entrada — se ele funcionar, a tela pula direto pra senha.
  *
  * Aqui NÃO se pede a senha antiga, de propósito: quem chegou até aqui provou
  * ter acesso à caixa de e-mail, que é justamente a prova que a senha antiga
  * daria — e pedi-la travaria exatamente quem esqueceu.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -29,90 +46,139 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 
-type Estado = 'verificando' | 'pronto' | 'link_invalido' | 'salvo';
+/**
+ * `codigo`  — pede e-mail + código de 6 dígitos. É o caminho principal.
+ * `senha`   — a sessão de recuperação existe; só falta escolher a senha.
+ * `salvo`   — pronto, indo pro painel.
+ */
+type Estado = 'verificando' | 'codigo' | 'senha' | 'salvo';
 
 export default function NovaSenhaPage() {
   const router = useRouter();
   const [estado, setEstado] = useState<Estado>('verificando');
+
+  const [email, setEmail] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [verificando, setVerificando] = useState(false);
+
   const [senha, setSenha] = useState('');
   const [confirmacao, setConfirmacao] = useState('');
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  // Só pra decidir o texto de ajuda: se a pessoa veio de um link que falhou,
+  // a tela explica por que, em vez de só pedir o código do nada.
+  const linkFalhou = useRef(false);
+
   useEffect(() => {
     let ativo = true;
+    let desistir: ReturnType<typeof setTimeout>;
+    let cancelar: (() => void) | undefined;
 
+    // O supabase-js roda com `detectSessionInUrl` ligado (o padrão), então ELE
+    // processa o link sozinho ao carregar: pega o `?code=` (PKCE) ou os tokens
+    // do fragmento (implícito), troca por sessão e limpa a URL.
+    //
+    // Foi a armadilha de uma tentativa anterior de correção: chamar
+    // `exchangeCodeForSession` na mão competia com o SDK, o code já tinha sido
+    // consumido, e a tela dizia "link inválido" logo depois de o Supabase ter
+    // ACEITO o link. Aqui não se processa nada — espera-se o resultado.
     (async () => {
-      const fragmento = new URLSearchParams(window.location.hash.slice(1));
-      const query = new URLSearchParams(window.location.search);
-
-      // O erro pode vir nos dois lugares, dependendo do formato do link.
       const erroDoLink =
-        fragmento.get('error_description') || query.get('error_description');
+        new URLSearchParams(window.location.search).get('error_description') ||
+        new URLSearchParams(window.location.hash.slice(1)).get('error_description');
+
       if (erroDoLink) {
-        if (ativo) setEstado('link_invalido');
+        // Quase sempre `otp_expired`, do pré-carregador. Cai no código.
+        linkFalhou.current = true;
+        if (ativo) setEstado('codigo');
         return;
       }
 
-      // 1. Fluxo PKCE: o Supabase devolve `?code=` na QUERY.
-      //
-      // É o formato que este projeto usa de verdade — confirmado nos logs, os
-      // tokens saem como `token=pkce_...`. A tela originalmente só lia o
-      // fragmento (fluxo implícito), então o código caía direto no passo 3,
-      // não achava sessão nenhuma e mostrava "link inválido". Quem clicava no
-      // e-mail voltava pro login sem entender por quê, pedia outro link, e
-      // repetia — o padrão que apareceu no log de uma aluna: quatro pedidos em
-      // cinco minutos.
-      const code = query.get('code');
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (!ativo) return;
-        if (error) {
-          setEstado('link_invalido');
-          return;
-        }
-        window.history.replaceState(null, '', window.location.pathname);
-        setEstado('pronto');
-        return;
-      }
-
-      // 2. Fluxo implícito: tokens no FRAGMENTO (#access_token=...).
-      //
-      // Mantido porque o formato do link depende de configuração do projeto e
-      // pode mudar sem aviso — e um link já enviado continua valendo por uma
-      // hora. Tratar os dois custa poucas linhas e evita que a troca de
-      // configuração quebre quem tem o e-mail na caixa de entrada.
-      const access_token = fragmento.get('access_token');
-      const refresh_token = fragmento.get('refresh_token');
-
-      if (access_token && refresh_token) {
-        const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-        if (!ativo) return;
-        if (error) {
-          setEstado('link_invalido');
-          return;
-        }
-        // Tira os tokens da barra de endereço: eles dão acesso à conta e não
-        // devem sobrar no histórico do navegador nem num print de tela.
-        window.history.replaceState(null, '', window.location.pathname);
-        setEstado('pronto');
-        return;
-      }
-
-      // 3. Sem nenhum dos dois: pode ser que a sessão já tenha sido criada
-      //    (recarga da página depois de um dos passos acima). Vale checar
-      //    antes de recusar.
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (!ativo) return;
-      setEstado(session ? 'pronto' : 'link_invalido');
+
+      if (session) {
+        window.history.replaceState(null, '', window.location.pathname);
+        setEstado('senha');
+        return;
+      }
+
+      // Sem erro e sem sessão: ou o SDK ainda está trocando o code, ou a
+      // pessoa abriu a página direto. Espera um pouco antes de decidir.
+      const temCode =
+        new URLSearchParams(window.location.search).has('code') ||
+        window.location.hash.includes('access_token');
+
+      if (!temCode) {
+        setEstado('codigo');
+        return;
+      }
+
+      const { data: assinatura } = supabase.auth.onAuthStateChange((_e, nova) => {
+        if (!ativo || !nova) return;
+        window.history.replaceState(null, '', window.location.pathname);
+        setEstado('senha');
+        clearTimeout(desistir);
+        assinatura.subscription.unsubscribe();
+      });
+      cancelar = () => assinatura.subscription.unsubscribe();
+
+      desistir = setTimeout(() => {
+        if (!ativo) return;
+        assinatura.subscription.unsubscribe();
+        linkFalhou.current = true;
+        setEstado('codigo');
+      }, 5000);
     })();
 
     return () => {
       ativo = false;
+      clearTimeout(desistir);
+      cancelar?.();
     };
   }, []);
+
+  const verificarCodigo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErro('');
+
+    const limpo = codigo.replace(/\D/g, '');
+    if (limpo.length !== 6) {
+      setErro('O código tem 6 números.');
+      return;
+    }
+    if (!email.trim()) {
+      setErro('Informe o e-mail que recebeu o código.');
+      return;
+    }
+
+    setVerificando(true);
+    try {
+      // `type: 'recovery'` é o que casa com o e-mail de redefinição de senha.
+      const { error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: limpo,
+        type: 'recovery',
+      });
+
+      if (error) {
+        setErro(
+          /expired|invalid/i.test(error.message)
+            ? 'Código inválido ou vencido. Peça um novo e tente de novo.'
+            : error.message,
+        );
+        return;
+      }
+      setEstado('senha');
+    } catch {
+      setErro('Não foi possível verificar o código. Tente novamente.');
+    } finally {
+      setVerificando(false);
+    }
+  };
 
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,8 +195,6 @@ export default function NovaSenhaPage() {
 
     setSalvando(true);
     try {
-      // updateUser pelo cliente do navegador, que é quem tem a sessão de
-      // recuperação viva neste momento.
       const { error } = await supabase.auth.updateUser({ password: senha });
       if (error) {
         setErro(
@@ -158,35 +222,7 @@ export default function NovaSenhaPage() {
     return (
       <Card className="w-full rounded-3xl">
         <CardContent className="py-12 text-center text-muted-foreground">
-          Verificando o link...
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (estado === 'link_invalido') {
-    return (
-      <Card className="w-full rounded-3xl">
-        <CardHeader className="text-center">
-          <CardTitle>Esse link não vale mais</CardTitle>
-          <CardDescription>
-            Links de recuperação valem por uma hora e só podem ser usados uma vez.
-            Se você abriu o e-mail em mais de um lugar, o link pode ter sido gasto
-            antes de você clicar — peça um novo e abra direto no celular.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* buttonVariants em vez de <Button asChild>: este Button não
-              suporta asChild, e <a> dentro de <button> é markup inválido. */}
-          <Link href="/recuperar-senha" className={buttonVariants({ className: 'w-full' })}>
-            Pedir um link novo
-          </Link>
-          <Link
-            href="/login"
-            className={buttonVariants({ variant: 'outline', className: 'w-full' })}
-          >
-            Voltar para entrar
-          </Link>
+          Verificando...
         </CardContent>
       </Card>
     );
@@ -199,6 +235,74 @@ export default function NovaSenhaPage() {
           <CardTitle>Senha alterada 🎉</CardTitle>
           <CardDescription>Levando você para o painel...</CardDescription>
         </CardHeader>
+      </Card>
+    );
+  }
+
+  if (estado === 'codigo') {
+    return (
+      <Card className="w-full rounded-3xl">
+        <CardHeader className="text-center">
+          <CardTitle>Digite o código</CardTitle>
+          <CardDescription>
+            {linkFalhou.current
+              ? 'O link do e-mail não valia mais — isso acontece quando o e-mail é aberto em mais de um lugar. Use o código de 6 números que veio na mesma mensagem.'
+              : 'Enviamos um código de 6 números para o seu e-mail.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={verificarCodigo} className="space-y-4">
+            {erro && (
+              <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+                {erro}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Seu e-mail</Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                autoComplete="email"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="codigo">Código</Label>
+              {/* inputMode numérico abre o teclado de números no celular, que
+                  é onde a maioria vai digitar. `one-time-code` deixa o próprio
+                  sistema oferecer o código copiado do e-mail. */}
+              <Input
+                id="codigo"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="000000"
+                className="text-center text-2xl tracking-[0.4em]"
+                value={codigo}
+                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              />
+            </div>
+
+            <Button type="submit" className="w-full" disabled={verificando}>
+              {verificando ? 'Verificando...' : 'Continuar'}
+            </Button>
+
+            <p className="text-center text-sm text-muted-foreground">
+              Não recebeu?{' '}
+              <Link
+                href="/recuperar-senha"
+                className="font-semibold text-primary hover:underline"
+              >
+                Pedir outro código
+              </Link>
+            </p>
+          </form>
+        </CardContent>
       </Card>
     );
   }

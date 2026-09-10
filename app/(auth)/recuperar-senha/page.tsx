@@ -69,17 +69,26 @@ export default function RecuperarSenhaPage() {
           </div>
           <CardTitle>Confira seu e-mail</CardTitle>
           <CardDescription>
-            Se existir uma conta com <strong>{email}</strong>, o link para criar uma nova
+            Se existir uma conta com <strong>{email}</strong>, o código para criar uma nova
             senha chega em instantes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            O link vale por uma hora. Não achou? Veja também a caixa de spam.
+            O código vale por uma hora. Não achou? Veja também a caixa de spam.
           </p>
+          {/* Botão pro código, e não só "voltar pro login": o e-mail traz um
+              número de 6 dígitos, e é aqui que ela digita. Sem este caminho a
+              pessoa fecharia a tela e não saberia pra onde ir. */}
+          <Link href="/nova-senha" className={buttonVariants({ className: 'w-full' })}>
+            Já tenho o código
+          </Link>
           {/* Link com cara de botão via buttonVariants: o Button daqui não
               tem `asChild`, e aninhar <a> dentro de <button> seria inválido. */}
-          <Link href="/login" className={buttonVariants({ className: 'w-full' })}>
+          <Link
+            href="/login"
+            className={buttonVariants({ variant: 'outline', className: 'w-full' })}
+          >
             Voltar para entrar
           </Link>
         </CardContent>
@@ -92,7 +101,7 @@ export default function RecuperarSenhaPage() {
       <CardHeader className="text-center">
         <CardTitle>Esqueci minha senha</CardTitle>
         <CardDescription>
-          Digite seu e-mail e enviamos um link para você criar uma nova.
+          Digite seu e-mail e enviamos um código para você criar uma nova.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -117,7 +126,7 @@ export default function RecuperarSenhaPage() {
           </div>
 
           <Button type="submit" className="w-full" disabled={enviando}>
-            {enviando ? 'Enviando...' : 'Enviar link'}
+            {enviando ? 'Enviando...' : 'Enviar código'}
           </Button>
 
           <p className="text-center text-sm text-muted-foreground">

@@ -192,7 +192,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           message:
-            'Se existir uma conta com esse e-mail, o link para criar uma nova senha chega em instantes.',
+            'Se existir uma conta com esse e-mail, o código para criar uma nova senha chega em instantes.',
         },
         { status: 200 },
       );
