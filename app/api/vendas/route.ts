@@ -21,6 +21,21 @@ import { normalizarTelefone } from '@/lib/telefone';
 import { recalcularTotaisDaVenda } from '@/lib/edicao-venda';
 import { calcularTotalComDesconto } from '@/lib/desconto';
 import {
+  coerenteAoMarcarFeito,
+  coerenteAoMarcarPedido,
+  type FeedbackDaVenda,
+} from '@/lib/feedback-venda';
+
+// As funcoes de coerencia recebem o estado atual so por assinatura: elas
+// devolvem o delta, nao dependem do que ja estava gravado. Este objeto existe
+// pra deixar isso explicito em vez de buscar a venda so pra ignorar o valor.
+const FEEDBACK_ZERADO: FeedbackDaVenda = {
+  feedback_google_pedido: false,
+  feedback_google_feito: false,
+  feedback_presenteado_pedido: false,
+  feedback_presenteado_feito: false,
+};
+import {
   ehEntrega,
   ehPagamento,
   type Entrega,
@@ -713,6 +728,10 @@ export async function PATCH(request: NextRequest) {
       bairro?: unknown;
       notes?: unknown;
       items?: unknown;
+      feedback_google_pedido?: unknown;
+      feedback_google_feito?: unknown;
+      feedback_presenteado_pedido?: unknown;
+      feedback_presenteado_feito?: unknown;
     } = await request.json();
 
     const patch: {
@@ -726,6 +745,10 @@ export async function PATCH(request: NextRequest) {
       delivery_period?: string | null;
       bairro?: string | null;
       notes?: string | null;
+      feedback_google_pedido?: boolean;
+      feedback_google_feito?: boolean;
+      feedback_presenteado_pedido?: boolean;
+      feedback_presenteado_feito?: boolean;
     } = {};
 
     // Valida na rota em vez de deixar o CHECK do banco recusar: o erro do
@@ -777,6 +800,31 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({ error: `Campo ${campo} inválido.` }, { status: 400 });
         }
         patch[campo] = valor && valor.trim() ? valor.trim() : null;
+      }
+    }
+
+    // FEEDBACK. A coerencia entre "pedido" e "feito" e aplicada no servidor,
+    // e nao so na tela: "feito" sem "pedido" e estado impossivel (ninguem
+    // avalia sem ser convidado) e produziria uma venda que aparece resolvida
+    // sem nunca ter entrado na conta de pedidos. Regras em lib/feedback-venda.
+    for (const canal of ['google', 'presenteado'] as const) {
+      const chavePedido = `feedback_${canal}_pedido` as const;
+      const chaveFeito = `feedback_${canal}_feito` as const;
+
+      if (body[chaveFeito] !== undefined) {
+        if (typeof body[chaveFeito] !== 'boolean') {
+          return NextResponse.json({ error: 'Valor de feedback inválido.' }, { status: 400 });
+        }
+        Object.assign(patch, coerenteAoMarcarFeito(FEEDBACK_ZERADO, canal, body[chaveFeito]));
+      }
+
+      if (body[chavePedido] !== undefined) {
+        if (typeof body[chavePedido] !== 'boolean') {
+          return NextResponse.json({ error: 'Valor de feedback inválido.' }, { status: 400 });
+        }
+        // Depois do "feito" de proposito: desmarcar "pedido" tem que derrubar
+        // "feito" junto, e essa e a palavra final.
+        Object.assign(patch, coerenteAoMarcarPedido(FEEDBACK_ZERADO, canal, body[chavePedido]));
       }
     }
 

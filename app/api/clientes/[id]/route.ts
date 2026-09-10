@@ -50,7 +50,11 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       supabase
         .from('vendas_diarias')
         .select(
-          'id, data, faturamento_total, venda_itens ( produto_nome, quantidade, subtotal, tipo ), venda_tag_links ( venda_tags ( id, nome, cor ) )',
+          `id, data, faturamento_total,
+           feedback_google_pedido, feedback_google_feito,
+           feedback_presenteado_pedido, feedback_presenteado_feito,
+           venda_itens ( produto_nome, quantidade, subtotal, tipo ),
+           venda_tag_links ( venda_tags ( id, nome, cor ) )`,
         )
         .eq('workspace_id', user.id)
         .eq('customer_id', params.id)

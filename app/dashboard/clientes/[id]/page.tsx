@@ -38,6 +38,11 @@ interface Compra {
   venda_itens: ItemCompra[];
   /** Ocasião da compra — aniversário, Natal, corporativo (migration 010). */
   etiquetas?: Etiqueta[];
+  /** Feedback: pedir é ação da aluna, ser atendido chega depois (migration 017). */
+  feedback_google_pedido: boolean;
+  feedback_google_feito: boolean;
+  feedback_presenteado_pedido: boolean;
+  feedback_presenteado_feito: boolean;
 }
 
 interface ClienteDetalhe {
@@ -64,6 +69,70 @@ const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', curren
 // A data vem como YYYY-MM-DD (coluna DATE). Montar com T12:00 evita que o
 // fuso do navegador jogue a data pro dia anterior na exibição.
 const fmtData = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR');
+
+/**
+ * Os dois feedbacks de uma venda, cada um em dois passos.
+ *
+ * "Foi feito?" so aparece depois de "pediu": perguntar se veio um retorno que
+ * nunca foi pedido nao faz sentido, e mostrar quatro caixas em toda venda
+ * encheria o historico de perguntas que quase sempre nao se aplicam.
+ */
+function BlocoDeFeedback({
+  compra,
+  onMudar,
+}: {
+  compra: Compra;
+  onMudar: (id: string, campos: Record<string, boolean>) => void;
+}) {
+  const canais = [
+    {
+      chave: 'google' as const,
+      titulo: 'Avaliação no Google',
+      pedido: compra.feedback_google_pedido,
+      feito: compra.feedback_google_feito,
+    },
+    {
+      chave: 'presenteado' as const,
+      titulo: 'Retorno de quem recebeu',
+      pedido: compra.feedback_presenteado_pedido,
+      feito: compra.feedback_presenteado_feito,
+    },
+  ];
+
+  return (
+    <div className="mt-3 space-y-1.5 rounded-lg bg-muted/40 p-2.5">
+      {canais.map((canal) => (
+        <div key={canal.chave} className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-input"
+              checked={canal.pedido}
+              onChange={(e) =>
+                onMudar(compra.id, { [`feedback_${canal.chave}_pedido`]: e.target.checked })
+              }
+            />
+            Pedi: {canal.titulo}
+          </label>
+
+          {canal.pedido && (
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input"
+                checked={canal.feito}
+                onChange={(e) =>
+                  onMudar(compra.id, { [`feedback_${canal.chave}_feito`]: e.target.checked })
+                }
+              />
+              {canal.feito ? 'Feito' : 'Ainda não veio'}
+            </label>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function ClienteDetalhePage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -105,6 +174,47 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
       }
     })();
   }, [params.id]);
+
+  /**
+   * Marca feedback pedido/feito.
+   *
+   * Atualiza a tela ANTES de a resposta chegar: e uma caixa de selecao, e
+   * esperar o servidor pra ela reagir daria a impressao de clique perdido. Se
+   * o servidor recusar, o estado volta — e a mesma disciplina do resto da tela.
+   *
+   * O servidor tem a palavra final sobre coerencia (marcar "feito" liga
+   * "pedido" junto), entao a resposta e reaplicada por cima do palpite otimista.
+   */
+  const atualizarFeedback = async (idDaVenda: string, campos: Record<string, boolean>) => {
+    const antes = cliente;
+    setCliente((atual) =>
+      atual
+        ? {
+            ...atual,
+            compras: atual.compras.map((c) =>
+              c.id === idDaVenda ? { ...c, ...campos } : c,
+            ),
+          }
+        : atual,
+    );
+
+    try {
+      const res = await fetch(`/api/vendas?id=${idDaVenda}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(campos),
+      });
+      if (!res.ok) throw new Error('recusado');
+
+      // Rebusca em vez de confiar no palpite: o servidor pode ter ligado
+      // "pedido" junto com "feito", e a tela precisa mostrar isso.
+      const atualizado = await fetch(`/api/clientes/${params.id}`);
+      const result = await atualizado.json();
+      if (atualizado.ok) setCliente(result.data);
+    } catch {
+      setCliente(antes);
+    }
+  };
 
   const excluir = async () => {
     await fetch(`/api/clientes/${params.id}`, { method: 'DELETE' });
@@ -305,6 +415,8 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
                       </li>
                     ))}
                   </ul>
+
+                  <BlocoDeFeedback compra={compra} onMudar={atualizarFeedback} />
                 </div>
               ))}
             </div>
