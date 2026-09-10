@@ -47,7 +47,7 @@ import {
 } from '@/components/ui/card';
 
 /**
- * `codigo`  — pede e-mail + código de 6 dígitos. É o caminho principal.
+ * `codigo`  — pede e-mail + o código do e-mail. É o caminho principal.
  * `senha`   — a sessão de recuperação existe; só falta escolher a senha.
  * `salvo`   — pronto, indo pro painel.
  */
@@ -57,7 +57,13 @@ export default function NovaSenhaPage() {
   const router = useRouter();
   const [estado, setEstado] = useState<Estado>('verificando');
 
-  const [email, setEmail] = useState('');
+  // Ja vem preenchido quando a pessoa chega pelo botao "Ja tenho o codigo":
+  // ela digitou o e-mail na tela anterior, e pedir de novo e trabalho repetido.
+  // `useState` com funcao pra ler a URL so uma vez, e nao a cada render.
+  const [email, setEmail] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('email') ?? '';
+  });
   const [codigo, setCodigo] = useState('');
   const [verificando, setVerificando] = useState(false);
 
@@ -148,9 +154,20 @@ export default function NovaSenhaPage() {
     e.preventDefault();
     setErro('');
 
+    // NAO se checa o tamanho aqui, e isso e deliberado.
+    //
+    // A tela nasceu exigindo exatamente 6 digitos, porque eu supus esse
+    // tamanho. O Supabase deste projeto manda 8. O campo cortava os dois
+    // ultimos, mandava um numero truncado, e a resposta voltava "Codigo
+    // invalido" — culpando a pessoa por um erro da tela. Custou uma tarde
+    // inteira de tentativas.
+    //
+    // O tamanho do OTP e configuravel no painel do Supabase e pode mudar sem
+    // aviso pra ca. Quem sabe se o codigo vale e o servidor; a tela so precisa
+    // barrar o campo vazio.
     const limpo = codigo.replace(/\D/g, '');
-    if (limpo.length !== 6) {
-      setErro('O código tem 6 números.');
+    if (!limpo) {
+      setErro('Digite o código que chegou no seu e-mail.');
       return;
     }
     if (!email.trim()) {
@@ -249,8 +266,8 @@ export default function NovaSenhaPage() {
           <CardTitle>Digite o código</CardTitle>
           <CardDescription>
             {linkFalhou.current
-              ? 'O link do e-mail não valia mais — isso acontece quando o e-mail é aberto em mais de um lugar. Use o código de 6 números que veio na mesma mensagem.'
-              : 'Enviamos um código de 6 números para o seu e-mail.'}
+              ? 'O link do e-mail não valia mais — isso acontece quando o e-mail é aberto em mais de um lugar. Use o código de números que veio na mesma mensagem.'
+              : 'Digite o código de números que enviamos para o seu e-mail.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -279,15 +296,17 @@ export default function NovaSenhaPage() {
               {/* inputMode numérico abre o teclado de números no celular, que
                   é onde a maioria vai digitar. `one-time-code` deixa o próprio
                   sistema oferecer o código copiado do e-mail. */}
+              {/* Sem `maxLength`: ver a nota em `verificarCodigo`. O filtro
+                  tira letra e espaco (colar do e-mail costuma trazer), mas
+                  nao corta o comprimento. */}
               <Input
                 id="codigo"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={6}
-                placeholder="000000"
-                className="text-center text-2xl tracking-[0.4em]"
+                placeholder="00000000"
+                className="text-center text-2xl tracking-[0.3em]"
                 value={codigo}
-                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
               />
             </div>
 

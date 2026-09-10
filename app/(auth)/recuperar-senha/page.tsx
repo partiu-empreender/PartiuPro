@@ -78,9 +78,16 @@ export default function RecuperarSenhaPage() {
             O código vale por uma hora. Não achou? Veja também a caixa de spam.
           </p>
           {/* Botão pro código, e não só "voltar pro login": o e-mail traz um
-              número de 6 dígitos, e é aqui que ela digita. Sem este caminho a
-              pessoa fecharia a tela e não saberia pra onde ir. */}
-          <Link href="/nova-senha" className={buttonVariants({ className: 'w-full' })}>
+              número, e é aqui que ela digita. Sem este caminho a pessoa
+              fecharia a tela e não saberia pra onde ir.
+
+              O e-mail vai junto na URL: ela ACABOU de digitá-lo aqui, e pedir
+              de novo na tela seguinte é trabalho repetido — além de uma chance
+              a mais de errar e culpar o código. */}
+          <Link
+            href={`/nova-senha?email=${encodeURIComponent(email)}`}
+            className={buttonVariants({ className: 'w-full' })}
+          >
             Já tenho o código
           </Link>
           {/* Link com cara de botão via buttonVariants: o Button daqui não
