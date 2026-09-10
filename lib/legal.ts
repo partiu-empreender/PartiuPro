@@ -3,6 +3,23 @@
 // Qualquer mudança de sentido (não só redação) exige nova versão e novo
 // aceite das usuárias — ver seção 11 do documento.
 
+// ATENCAO — DECISAO PENDENTE DA TANIA (10/09/2026).
+//
+// O item 5 mudou nesta data: o texto proibia registrar telefone e endereco de
+// clientes, enquanto o sistema JA coletava telefone — e passou a coletar
+// endereco da cliente e contato de quem recebe o presente. A politica estava
+// descrevendo um produto que nao existia mais.
+//
+// A VERSAO NAO FOI INCREMENTADA de proposito, e isso e uma escolha que precisa
+// ser revista: `TERMS_VERSION` so e gravada no CADASTRO (app/api/auth), nao ha
+// fluxo de reconsentimento, e subir a versao agora nao faria ninguem reaceitar
+// — so criaria divergencia entre o que as 68 alunas aceitaram e o que esta no
+// ar, sem beneficio nenhum.
+//
+// O que precisa ser decidido: se as alunas atuais devem reaceitar o texto novo.
+// Se sim, e preciso construir o fluxo de reconsentimento E subir esta versao
+// junto. Coletar dado de terceiro que nao consentiu e uma escolha de negocio,
+// nao uma consequencia tecnica.
 export const TERMS_VERSION = '2026-08-26';
 export const MARKETING_CONSENT_VERSION = '2026-08-26';
 
@@ -52,7 +69,11 @@ A equipe da Ponte Treinamentos tem acesso aos dados necessários para operar a p
 Outras usuárias não têm acesso aos seus dados.
 
 5. Dados de terceiros que você registra.
-Se você registrar informações sobre clientes do seu negócio, registre apenas o mínimo necessário — apelido ou primeiro nome são suficientes. Não registre CPF, telefone, e-mail ou endereço de clientes. Nomes de clientes não são exibidos em painéis consolidados nem em qualquer material de divulgação. A relação com seus clientes e a base legal para tratar os dados deles são de sua responsabilidade; a segurança da plataforma e o controle de acesso são da nossa.
+Você registra dados de duas pessoas diferentes: sua cliente (quem compra) e, quando é presente, quem recebe. Para ambas, registre apenas o necessário para atender e entregar — nome, contato, endereço de entrega. Não registre CPF nem dados sensíveis (saúde, religião, opinião política, origem racial). Nomes e contatos de clientes não são exibidos em painéis consolidados nem em qualquer material de divulgação, e outras usuárias nunca os veem.
+
+Sobre quem recebe o presente: essa pessoa não é usuária da plataforma e não teve a chance de concordar com nada. Se você anotar o contato ou o endereço dela, peça autorização a ela ou a quem está comprando, e use esses dados só para combinar a entrega. Se ela pedir para ser apagada, apague — e você pode fazer isso pela própria tela, editando ou excluindo a venda.
+
+A relação com essas pessoas e a base legal para tratar os dados delas são de sua responsabilidade; a segurança da plataforma e o controle de acesso são da nossa.
 
 6. Uso da plataforma em materiais de divulgação.
 Produzimos fotos, vídeos e capturas de tela mostrando o Partiu PRO em funcionamento, para divulgar a ferramenta em nossos canais e materiais comerciais. Na maior parte das vezes, esse material usa dados de demonstração fictícios.

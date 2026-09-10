@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { normalizarTelefone } from '@/lib/telefone';
+import { normalizarDDI } from '@/lib/paises';
 import { extrairEtiquetas } from '@/lib/crm';
 
 interface AtualizarClienteRequest {
@@ -11,6 +12,7 @@ interface AtualizarClienteRequest {
   date_of_birth?: string;
   /** Como a cliente chegou: Instagram, Indicação, Google. */
   how_knew?: string;
+  ddi?: string;
   /** Endereço de CADASTRO da cliente — não o de uma entrega (esse fica na venda). */
   endereco?: string;
   complemento?: string;
@@ -36,7 +38,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
         .from('customers')
         .select(
           `id, name, phone, email, notes, date_of_birth, how_knew,
-           endereco, complemento, bairro, cidade,
+           ddi, endereco, complemento, bairro, cidade,
            total_orders, total_spent, last_order_at, created_at,
            customer_tag_links ( customer_tags ( id, nome, cor ) )`,
         )
@@ -113,6 +115,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     // Endereço de cadastro da cliente. String vazia APAGA o campo, em vez de
     // significar "não mexer" — senão não haveria como corrigir um erro de
     // digitação deixando o campo em branco.
+    // DDI sempre cai num valor válido: nunca null, porque a coluna é NOT NULL
+    // e o link de WhatsApp depende dele.
+    if (body.ddi !== undefined) patch.ddi = normalizarDDI(body.ddi);
     if (body.endereco !== undefined) patch.endereco = body.endereco.trim() || null;
     if (body.complemento !== undefined) patch.complemento = body.complemento.trim() || null;
     if (body.bairro !== undefined) patch.bairro = body.bairro.trim() || null;

@@ -19,6 +19,7 @@ import {
 } from '@/lib/datas';
 import { normalizarTelefone } from '@/lib/telefone';
 import { recalcularTotaisDaVenda } from '@/lib/edicao-venda';
+import { calcularTotalComDesconto } from '@/lib/desconto';
 import {
   ehEntrega,
   ehPagamento,
@@ -54,6 +55,12 @@ interface RegistrarVendaRequest {
   /** Pagamento e entrega. Ausentes = o default do banco (pago / a entregar). */
   status?: Pagamento;
   entrega?: Entrega;
+  /** Quem RECEBE o presente, quando não é a própria cliente. */
+  presenteado_nome?: string;
+  presenteado_contato?: string;
+  presenteado_endereco?: string;
+  /** Percentual de desconto, 0 a 100. */
+  desconto_percentual?: number;
 }
 
 /**
@@ -169,7 +176,20 @@ export async function POST(request: NextRequest) {
       return sum + item.quantidade * item.preco_unitario;
     }, 0);
 
-    const total_com_frete = faturamento_total + (body.shipping_cost || 0);
+    // O desconto incide sobre os ITENS, nunca sobre o frete: quem entrega paga
+    // o mesmo ao entregador com ou sem promoção. Regra testada em lib/desconto.
+    const desconto_percentual =
+      Number.isFinite(body.desconto_percentual) &&
+      (body.desconto_percentual as number) > 0 &&
+      (body.desconto_percentual as number) <= 100
+        ? (body.desconto_percentual as number)
+        : 0;
+
+    const total_com_frete = calcularTotalComDesconto(
+      faturamento_total,
+      body.shipping_cost || 0,
+      desconto_percentual,
+    );
 
     // ============================================
     // 1. CRIAR VENDA DIÁRIA (1 registro por cliente/transação)
@@ -195,6 +215,12 @@ export async function POST(request: NextRequest) {
         delivery_date: body.delivery_date || null,
         delivery_period: body.delivery_period || null,
         notes: body.notes || null,
+        desconto_percentual,
+        // Dados de terceiro que não consentiu: guardados porque a Tania pediu
+        // (ver migration 015), e só quando a aluna escolhe preencher.
+        presenteado_nome: body.presenteado_nome?.trim() || null,
+        presenteado_contato: normalizarTelefone(body.presenteado_contato),
+        presenteado_endereco: body.presenteado_endereco?.trim() || null,
       })
       .select()
       .single();

@@ -39,6 +39,7 @@ import IconeWhatsApp from '@/components/shared/IconeWhatsApp';
 import AcoesEmMassa from '@/components/shared/AcoesEmMassa';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ETIQUETAS_SUGERIDAS, NOME_DA_COR } from '@/lib/etiquetas';
+import { PAISES } from '@/lib/paises';
 import { aplicarMascaraTelefone, formatarTelefone, linkWhatsAppCom, saudacao } from '@/lib/telefone';
 import { hojeBrasil } from '@/lib/datas';
 import { CABECALHOS_CLIENTES, LINHAS_EXEMPLO_CLIENTES, gerarCSV, lerCSV } from '@/lib/csv';
@@ -64,6 +65,10 @@ interface Cliente {
   // Aniversário e data de cadastro não aparecem no cartão, mas sustentam os
   // filtros de data e os lembretes automáticos — por isso vêm na listagem.
   date_of_birth: string | null;
+  // DDI fica FORA de `phone` de propósito: `phone` é a chave de deduplicação
+  // (UNIQUE workspace+phone) e mudar seu formato faria o mesmo número virar
+  // duas clientes.
+  ddi: string | null;
   // Endereço de CADASTRO da cliente. Não confundir com o bairro da venda, que
   // é o destino daquela entrega — a cliente pode receber no trabalho num mês e
   // em casa no outro sem ter mudado de casa.
@@ -138,6 +143,7 @@ const formVazio = {
   notes: '',
   date_of_birth: '',
   how_knew: '',
+  ddi: '55',
   endereco: '',
   complemento: '',
   bairro: '',
@@ -391,6 +397,7 @@ export default function ClientesPage() {
       // Mesmo cuidado do aniversário logo acima: o PATCH grava o que recebe,
       // então um campo ausente aqui seria apagado ao salvar a edição.
       how_knew: c.how_knew || '',
+      ddi: c.ddi || '55',
       endereco: c.endereco || '',
       complemento: c.complemento || '',
       bairro: c.bairro || '',
@@ -1029,15 +1036,32 @@ export default function ClientesPage() {
                 <Label htmlFor="cliente-telefone">
                 Telefone <span className="text-destructive">*</span>
               </Label>
-                <Input
-                  id="cliente-telefone"
-                  inputMode="tel"
-                  placeholder="(21) 99999-8888"
-                  value={form.phone}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, phone: aplicarMascaraTelefone(e.target.value) }))
-                  }
-                />
+                {/* País + número lado a lado. Brasil é o padrão e continua
+                    sendo um campo só para quem nunca sai dele. */}
+                <div className="flex gap-2">
+                  <select
+                    aria-label="País do telefone"
+                    className="h-10 rounded-md border border-input bg-background px-2 text-sm"
+                    value={form.ddi}
+                    onChange={(e) => setForm((f) => ({ ...f, ddi: e.target.value }))}
+                  >
+                    {PAISES.map((pais) => (
+                      <option key={pais.ddi} value={pais.ddi}>
+                        {pais.bandeira} +{pais.ddi}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    id="cliente-telefone"
+                    inputMode="tel"
+                    className="flex-1"
+                    placeholder="(21) 99999-8888"
+                    value={form.phone}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, phone: aplicarMascaraTelefone(e.target.value) }))
+                    }
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cliente-nascimento">Aniversário</Label>

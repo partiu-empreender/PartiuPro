@@ -168,6 +168,15 @@ export default function DashboardPage() {
   // Data da venda. Começa em hoje — o caminho normal continua sendo não mexer
   // aqui; lançar mês passado é uma escolha explícita dela.
   const [dataVenda, setDataVenda] = useState(hojeBrasil());
+
+  // Presenteado: quem RECEBE, quando não é a própria cliente. Fica recolhido
+  // porque nem toda venda é presente — abrir três campos sempre encompridaria
+  // o formulário para todo mundo por causa de alguns.
+  const [presenteadoAberto, setPresenteadoAberto] = useState(false);
+  const [presenteadoNome, setPresenteadoNome] = useState('');
+  const [presenteadoContato, setPresenteadoContato] = useState('');
+  const [presenteadoEndereco, setPresenteadoEndereco] = useState('');
+  const [descontoPercentual, setDescontoPercentual] = useState('');
   // Ocasião DESTA venda (aniversário, Namorados). Não confundir com
   // `etiquetasDaNova`, que marca o que a CLIENTE é pra sempre: a mesma pessoa
   // compra pro aniversário em junho e pro Natal em dezembro.
@@ -493,6 +502,11 @@ export default function DashboardPage() {
     setBuscandoCliente(false);
     setItens([itemVazio()]);
     setDataVenda(hojeBrasil());
+    setPresenteadoAberto(false);
+    setPresenteadoNome('');
+    setPresenteadoContato('');
+    setPresenteadoEndereco('');
+    setDescontoPercentual('');
     setOcasioesDaVenda([]);
     setPagamentoVenda('pago');
     setEntregaAberta(false);
@@ -772,6 +786,10 @@ export default function DashboardPage() {
           cliente_nome: clienteNome.trim(),
           customer_id: clienteId,
           data: dataVenda,
+          presenteado_nome: presenteadoNome.trim() || undefined,
+          presenteado_contato: presenteadoContato.trim() || undefined,
+          presenteado_endereco: presenteadoEndereco.trim() || undefined,
+          desconto_percentual: descontoPercentual ? Number(descontoPercentual) : undefined,
           tag_ids: ocasioesDaVenda.length ? ocasioesDaVenda : undefined,
           cliente_telefone: clienteTelefone.trim() || undefined,
           status: pagamentoVenda,
@@ -1597,6 +1615,69 @@ export default function DashboardPage() {
                     Lançamento retroativo: esta venda entra no faturamento do mês
                     em que aconteceu, não no de hoje.
                   </p>
+                )}
+              </div>
+
+              {/* DESCONTO. Guardamos o percentual, e não só o valor já
+                  descontado: uma cesta de 100 vendida a 90 ficaria
+                  indistinguível de uma que sempre custou 90, e ela perderia a
+                  única pergunta que importa — quanto deu de desconto no mês.
+                  O desconto NÃO incide sobre o frete (ver lib/desconto). */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="desconto-venda">
+                  Desconto (%)
+                </label>
+                <Input
+                  id="desconto-venda"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={descontoPercentual}
+                  onChange={(e) => {
+                    // Trava em 100 aqui além do CHECK do banco: desconto de
+                    // 150% viraria faturamento negativo e o Raio-X passaria a
+                    // subtrair vendas.
+                    const so = e.target.value.replace(/\D/g, '').slice(0, 3);
+                    if (so === '' || Number(so) <= 100) setDescontoPercentual(so);
+                  }}
+                />
+              </div>
+
+              {/* PRESENTEADO. Recolhido porque nem toda venda é presente. */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setPresenteadoAberto((a) => !a)}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  {presenteadoAberto ? '− Quem vai receber' : '+ Quem vai receber'}
+                </button>
+
+                {presenteadoAberto && (
+                  <div className="space-y-3 rounded-lg border p-3">
+                    <p className="text-xs text-muted-foreground">
+                      Preencha só se o presente for para outra pessoa. Peça
+                      autorização antes de anotar o contato de quem recebe.
+                    </p>
+                    <Input
+                      aria-label="Nome de quem recebe"
+                      placeholder="Nome de quem recebe"
+                      value={presenteadoNome}
+                      onChange={(e) => setPresenteadoNome(e.target.value)}
+                    />
+                    <Input
+                      aria-label="Contato de quem recebe"
+                      inputMode="tel"
+                      placeholder="Telefone de quem recebe"
+                      value={presenteadoContato}
+                      onChange={(e) => setPresenteadoContato(aplicarMascaraTelefone(e.target.value))}
+                    />
+                    <Input
+                      aria-label="Endereço de entrega"
+                      placeholder="Endereço de entrega"
+                      value={presenteadoEndereco}
+                      onChange={(e) => setPresenteadoEndereco(e.target.value)}
+                    />
+                  </div>
                 )}
               </div>
 
