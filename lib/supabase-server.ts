@@ -10,32 +10,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-// O FLUXO DE AUTENTICAÇÃO É `implicit` DE PROPÓSITO, NOS DOIS CLIENTES ABAIXO.
-//
-// O padrão do Supabase é PKCE, e ele quebra a recuperação de senha por e-mail.
-// Quem EMITE o token é o cliente do route handler (`action === 'recuperar'` em
-// app/api/auth/route.ts), então o formato gravado em `auth.users.recovery_token`
-// é decidido aqui — não no cliente do navegador.
-//
-// Com PKCE, o token gravado é um `pkce_…` de 61 caracteres, enquanto o
-// `{{ .Token }}` do e-mail imprime o código de 6 dígitos. O `verifyOtp` compara
-// com o valor GRAVADO, então o código correto é recusado como
-// `token has expired or is invalid`. Medido em produção: pedido às 21:15:07,
-// recusado às 21:15:32, com o token ainda intacto no banco.
-//
-// O link sofre do mesmo mal por outro caminho: o PKCE exige o `code_verifier`
-// guardado no navegador que pediu, que não existe quando o e-mail é aberto no
-// celular.
-//
-// No fluxo implícito o `recovery_token` é o próprio código de 6 dígitos. Se
-// alguém "padronizar" isto de volta para PKCE, os dois caminhos voltam a falhar.
-const OPCOES_DE_AUTH = { flowType: 'implicit' } as const;
-
 // Server-side Supabase client for Server Components
 export async function getServerSupabaseClient() {
   const cookieStore = await cookies();
   return createServerClient(supabaseUrl!, supabaseAnonKey!, {
-    auth: OPCOES_DE_AUTH,
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {
@@ -50,12 +28,9 @@ export async function getServerSupabaseClient() {
 }
 
 // Route Handler Supabase client
-// É ESTE que roda o `resetPasswordForEmail`, ou seja, quem grava o
-// `recovery_token`. Ver a nota sobre `implicit` acima.
 export async function getRouteHandlerSupabaseClient() {
   const cookieStore = await cookies();
   return createServerClient(supabaseUrl!, supabaseAnonKey!, {
-    auth: OPCOES_DE_AUTH,
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {
@@ -70,6 +45,47 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || '',
   auth: {
     autoRefreshToken: false,
     persistSession: false,
+  },
+});
+
+/**
+ * Cliente usado SÓ para emitir o e-mail de recuperação de senha.
+ *
+ * POR QUE UM CLIENTE SEPARADO, E NÃO O DO ROUTE HANDLER
+ *
+ * Quem chama `resetPasswordForEmail` decide o formato do que fica gravado em
+ * `auth.users.recovery_token`, e é isso que o `verifyOtp` compara depois.
+ *
+ * O `@supabase/ssr` FORÇA PKCE e não deixa desligar. No createServerClient.js
+ * ele monta as opções assim:
+ *
+ *     auth: { ...options?.auth, flowType: "pkce", ... }
+ *
+ * O `...options?.auth` vem ANTES, então passar `flowType: 'implicit'` ali é
+ * silenciosamente descartado — foi exatamente o que aconteceu na primeira
+ * tentativa de correção: o código continuou sendo recusado e o token no banco
+ * continuou `pkce_`.
+ *
+ * Com PKCE o token gravado é um `pkce_…` de 61 caracteres, enquanto o
+ * `{{ .Token }}` do e-mail imprime o código de 6 dígitos. Eles nunca casam, e
+ * o erro que volta é `token has expired or is invalid` — medido em produção
+ * 22 segundos depois do pedido, com o token intacto no banco. A mensagem diz
+ * "expirado", mas o que houve foi incompatibilidade de formato.
+ *
+ * O link falhava pelo mesmo motivo por outro caminho: PKCE exige o
+ * `code_verifier` guardado no navegador QUE PEDIU, que não existe quando o
+ * e-mail é aberto no celular.
+ *
+ * `createClient` puro respeita o `flowType`, e no fluxo implícito o
+ * `recovery_token` é o próprio código de 6 dígitos. Não guarda sessão porque
+ * não precisa: só dispara o e-mail.
+ */
+export const supabaseRecuperacao = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    flowType: 'implicit',
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false,
   },
 });
 

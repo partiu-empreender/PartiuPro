@@ -1,4 +1,8 @@
-import { getRouteHandlerSupabaseClient, supabaseAdmin } from '@/lib/supabase-server';
+import {
+  getRouteHandlerSupabaseClient,
+  supabaseAdmin,
+  supabaseRecuperacao,
+} from '@/lib/supabase-server';
 import { generateSlug, validateEmail, validatePhoneNumber } from '@/lib/utils';
 import { TERMS_VERSION, TERMS_TEXT, MARKETING_CONSENT_VERSION } from '@/lib/legal';
 import { NextResponse } from 'next/server';
@@ -174,7 +178,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'E-mail inválido' }, { status: 400 });
       }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      // `supabaseRecuperacao`, e nao o cliente do route handler, porque o
+      // @supabase/ssr forca PKCE — e no PKCE o token gravado nao e o codigo de
+      // 6 digitos que o e-mail mostra. Ver a nota em lib/supabase-server.ts.
+      const { error } = await supabaseRecuperacao.auth.resetPasswordForEmail(email, {
         redirectTo: `${new URL(request.url).origin}/nova-senha`,
       });
 
