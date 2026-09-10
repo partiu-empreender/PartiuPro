@@ -72,29 +72,50 @@ export default function NovaSenhaPage() {
 
   useEffect(() => {
     let ativo = true;
-    let desistir: ReturnType<typeof setTimeout>;
+    let desistir: ReturnType<typeof setTimeout> | undefined;
     let cancelar: (() => void) | undefined;
 
-    // O supabase-js roda com `detectSessionInUrl` ligado (o padrão), então ELE
-    // processa o link sozinho ao carregar: pega o `?code=` (PKCE) ou os tokens
-    // do fragmento (implícito), troca por sessão e limpa a URL.
+    // A ASSINATURA VEM PRIMEIRO, e isso é o ponto delicado desta tela.
     //
-    // Foi a armadilha de uma tentativa anterior de correção: chamar
-    // `exchangeCodeForSession` na mão competia com o SDK, o code já tinha sido
-    // consumido, e a tela dizia "link inválido" logo depois de o Supabase ter
-    // ACEITO o link. Aqui não se processa nada — espera-se o resultado.
+    // O supabase-js roda com `detectSessionInUrl` ligado (o padrão): ELE
+    // processa o link sozinho ao carregar — pega o `?code=` (PKCE) ou os
+    // tokens do fragmento, troca por sessão e LIMPA A URL.
+    //
+    // Duas armadilhas já caíram aqui:
+    //
+    // 1. Chamar `exchangeCodeForSession` na mão competia com o SDK pelo mesmo
+    //    code de uso único. A troca falhava e a tela dizia "link inválido"
+    //    logo depois de o Supabase ter ACEITO o link.
+    //
+    // 2. Checar `getSession()` primeiro é uma corrida: se o SDK ainda não
+    //    terminou, não há sessão — e olhar a URL pra decidir se vale esperar
+    //    também não funciona, porque a essa altura ele JÁ a limpou. A tela
+    //    caía no formulário de código com a pessoa logada, que foi exatamente
+    //    o relato ("o link me joga pra tela de código").
+    //
+    // Assinando antes, nenhum dos dois casos escapa: se a sessão chegar
+    // depois, o aviso chega aqui.
+    const { data: assinatura } = supabase.auth.onAuthStateChange((_evento, sessaoNova) => {
+      if (!ativo || !sessaoNova) return;
+      window.history.replaceState(null, '', window.location.pathname);
+      setEstado('senha');
+      clearTimeout(desistir);
+    });
+    cancelar = () => assinatura.subscription.unsubscribe();
+
     (async () => {
       const erroDoLink =
         new URLSearchParams(window.location.search).get('error_description') ||
         new URLSearchParams(window.location.hash.slice(1)).get('error_description');
 
       if (erroDoLink) {
-        // Quase sempre `otp_expired`, do pré-carregador. Cai no código.
+        // Quase sempre `otp_expired`, do pré-carregador de e-mail. Cai no código.
         linkFalhou.current = true;
         if (ativo) setEstado('codigo');
         return;
       }
 
+      // Talvez a sessão já exista (recarga da página, ou o SDK foi mais rápido).
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -103,35 +124,17 @@ export default function NovaSenhaPage() {
       if (session) {
         window.history.replaceState(null, '', window.location.pathname);
         setEstado('senha');
-        return;
-      }
-
-      // Sem erro e sem sessão: ou o SDK ainda está trocando o code, ou a
-      // pessoa abriu a página direto. Espera um pouco antes de decidir.
-      const temCode =
-        new URLSearchParams(window.location.search).has('code') ||
-        window.location.hash.includes('access_token');
-
-      if (!temCode) {
-        setEstado('codigo');
-        return;
-      }
-
-      const { data: assinatura } = supabase.auth.onAuthStateChange((_e, nova) => {
-        if (!ativo || !nova) return;
-        window.history.replaceState(null, '', window.location.pathname);
-        setEstado('senha');
         clearTimeout(desistir);
-        assinatura.subscription.unsubscribe();
-      });
-      cancelar = () => assinatura.subscription.unsubscribe();
+        return;
+      }
 
+      // Sem sessão ainda. Em vez de decidir agora, dá um tempo curto pro SDK
+      // terminar — quem abriu a página direto (sem link) espera 1,5s e vê o
+      // formulário de código, que é o caminho principal mesmo.
       desistir = setTimeout(() => {
         if (!ativo) return;
-        assinatura.subscription.unsubscribe();
-        linkFalhou.current = true;
         setEstado('codigo');
-      }, 5000);
+      }, 1500);
     })();
 
     return () => {
