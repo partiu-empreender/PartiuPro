@@ -43,16 +43,47 @@ export default function NovaSenhaPage() {
     let ativo = true;
 
     (async () => {
-      // 1. O caminho normal: tokens no fragmento da URL.
       const fragmento = new URLSearchParams(window.location.hash.slice(1));
-      const access_token = fragmento.get('access_token');
-      const refresh_token = fragmento.get('refresh_token');
-      const erroDoLink = fragmento.get('error_description');
+      const query = new URLSearchParams(window.location.search);
 
+      // O erro pode vir nos dois lugares, dependendo do formato do link.
+      const erroDoLink =
+        fragmento.get('error_description') || query.get('error_description');
       if (erroDoLink) {
         if (ativo) setEstado('link_invalido');
         return;
       }
+
+      // 1. Fluxo PKCE: o Supabase devolve `?code=` na QUERY.
+      //
+      // É o formato que este projeto usa de verdade — confirmado nos logs, os
+      // tokens saem como `token=pkce_...`. A tela originalmente só lia o
+      // fragmento (fluxo implícito), então o código caía direto no passo 3,
+      // não achava sessão nenhuma e mostrava "link inválido". Quem clicava no
+      // e-mail voltava pro login sem entender por quê, pedia outro link, e
+      // repetia — o padrão que apareceu no log de uma aluna: quatro pedidos em
+      // cinco minutos.
+      const code = query.get('code');
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!ativo) return;
+        if (error) {
+          setEstado('link_invalido');
+          return;
+        }
+        window.history.replaceState(null, '', window.location.pathname);
+        setEstado('pronto');
+        return;
+      }
+
+      // 2. Fluxo implícito: tokens no FRAGMENTO (#access_token=...).
+      //
+      // Mantido porque o formato do link depende de configuração do projeto e
+      // pode mudar sem aviso — e um link já enviado continua valendo por uma
+      // hora. Tratar os dois custa poucas linhas e evita que a troca de
+      // configuração quebre quem tem o e-mail na caixa de entrada.
+      const access_token = fragmento.get('access_token');
+      const refresh_token = fragmento.get('refresh_token');
 
       if (access_token && refresh_token) {
         const { error } = await supabase.auth.setSession({ access_token, refresh_token });
@@ -68,8 +99,9 @@ export default function NovaSenhaPage() {
         return;
       }
 
-      // 2. Sem fragmento: pode ser que a sessão já tenha sido criada (recarga
-      //    da página depois do passo acima). Vale checar antes de recusar.
+      // 3. Sem nenhum dos dois: pode ser que a sessão já tenha sido criada
+      //    (recarga da página depois de um dos passos acima). Vale checar
+      //    antes de recusar.
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -139,6 +171,8 @@ export default function NovaSenhaPage() {
           <CardTitle>Esse link não vale mais</CardTitle>
           <CardDescription>
             Links de recuperação valem por uma hora e só podem ser usados uma vez.
+            Se você abriu o e-mail em mais de um lugar, o link pode ter sido gasto
+            antes de você clicar — peça um novo e abra direto no celular.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
