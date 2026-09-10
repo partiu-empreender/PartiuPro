@@ -64,6 +64,13 @@ interface Cliente {
   // Aniversário e data de cadastro não aparecem no cartão, mas sustentam os
   // filtros de data e os lembretes automáticos — por isso vêm na listagem.
   date_of_birth: string | null;
+  // Endereço de CADASTRO da cliente. Não confundir com o bairro da venda, que
+  // é o destino daquela entrega — a cliente pode receber no trabalho num mês e
+  // em casa no outro sem ter mudado de casa.
+  endereco: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  cidade: string | null;
   created_at: string | null;
   total_orders: number | null;
   total_spent: number | null;
@@ -131,6 +138,10 @@ const formVazio = {
   notes: '',
   date_of_birth: '',
   how_knew: '',
+  endereco: '',
+  complemento: '',
+  bairro: '',
+  cidade: '',
 };
 
 // De onde as clientes chegam. Sugestões, não lista fechada: a aluna digita o
@@ -380,6 +391,10 @@ export default function ClientesPage() {
       // Mesmo cuidado do aniversário logo acima: o PATCH grava o que recebe,
       // então um campo ausente aqui seria apagado ao salvar a edição.
       how_knew: c.how_knew || '',
+      endereco: c.endereco || '',
+      complemento: c.complemento || '',
+      bairro: c.bairro || '',
+      cidade: c.cidade || '',
     });
     setEtiquetasDoForm(c.etiquetas.map((e) => e.id));
     setErro('');
@@ -1064,6 +1079,46 @@ export default function ClientesPage() {
                   ))}
                 </datalist>
               </div>
+            </div>
+
+            {/* ENDEREÇO — todo opcional. Vender pra alguém sem saber a rua é o
+                caso comum, não a exceção; exigir aqui travaria o cadastro
+                rápido no meio de uma feira. */}
+            <div className="space-y-2">
+              <Label htmlFor="cliente-endereco">Endereço</Label>
+              <Input
+                id="cliente-endereco"
+                placeholder="Rua e número"
+                value={form.endereco}
+                onChange={(e) => setForm((f) => ({ ...f, endereco: e.target.value }))}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="cliente-complemento">Complemento</Label>
+                <Input
+                  id="cliente-complemento"
+                  placeholder="Apto, bloco, referência"
+                  value={form.complemento}
+                  onChange={(e) => setForm((f) => ({ ...f, complemento: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cliente-bairro">Bairro</Label>
+                <Input
+                  id="cliente-bairro"
+                  value={form.bairro}
+                  onChange={(e) => setForm((f) => ({ ...f, bairro: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cliente-cidade">Cidade</Label>
+              <Input
+                id="cliente-cidade"
+                value={form.cidade}
+                onChange={(e) => setForm((f) => ({ ...f, cidade: e.target.value }))}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="cliente-contexto">Contexto</Label>

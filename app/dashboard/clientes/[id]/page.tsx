@@ -48,6 +48,10 @@ interface ClienteDetalhe {
   notes: string | null;
   date_of_birth: string | null;
   how_knew: string | null;
+  endereco: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  cidade: string | null;
   total_orders: number | null;
   total_spent: number | null;
   last_order_at: string | null;
@@ -189,6 +193,27 @@ export default function ClienteDetalhePage({ params }: { params: { id: string } 
           </CardContent>
         </Card>
       </div>
+
+      {/* Só aparece se houver alguma parte do endereço: um cartão vazio
+          ocuparia espaço afirmando que não se sabe onde a cliente mora. */}
+      {(cliente.endereco || cliente.complemento || cliente.bairro || cliente.cidade) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Endereço</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            {cliente.endereco && <p>{cliente.endereco}</p>}
+            {cliente.complemento && (
+              <p className="text-muted-foreground">{cliente.complemento}</p>
+            )}
+            {(cliente.bairro || cliente.cidade) && (
+              <p className="text-muted-foreground">
+                {[cliente.bairro, cliente.cidade].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {cliente.notes && (
         <Card>

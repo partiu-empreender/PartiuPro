@@ -11,6 +11,11 @@ interface CriarClienteRequest {
   date_of_birth?: string;
   /** Como a cliente chegou: Instagram, Indicação, Google. */
   how_knew?: string;
+  /** Endereço de CADASTRO da cliente — não o de uma entrega (esse fica na venda). */
+  endereco?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
   tag_ids?: string[];
 }
 
@@ -18,6 +23,7 @@ interface CriarClienteRequest {
 // cliente sem etiqueta precisa aparecer na lista.
 const SELECT_CLIENTE = `
   id, name, phone, email, notes, date_of_birth, how_knew,
+  endereco, complemento, bairro, cidade,
   total_orders, total_spent, last_order_at, created_at,
   customer_tag_links ( tag_id, customer_tags ( id, nome, cor ) )
 `;
@@ -116,6 +122,10 @@ export async function POST(request: NextRequest) {
         notes: body.notes?.trim() || null,
         date_of_birth: body.date_of_birth || null,
         how_knew: body.how_knew?.trim() || null,
+        endereco: body.endereco?.trim() || null,
+        complemento: body.complemento?.trim() || null,
+        bairro: body.bairro?.trim() || null,
+        cidade: body.cidade?.trim() || null,
       })
       .select('id')
       .single();
