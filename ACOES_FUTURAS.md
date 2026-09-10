@@ -17,7 +17,23 @@ Coisas que foram identificadas mas **deliberadamente adiadas**. Cada item tem o 
 - **O que é**: o Supabase usa por padrão um servidor de e-mail próprio pra confirmação de cadastro/reset de senha, com um limite muito baixo de envios por hora no plano Free (alguns poucos e-mails/hora).
 - **Por que importa**: descoberto em 2026-08-24 testando o signup em produção — bati o limite só com testes manuais, antes mesmo de qualquer aluna real se cadastrar. Se várias alunas criarem conta no mesmo dia (ex.: início de turma), algumas vão receber "email rate limit exceeded" e não conseguir se cadastrar.
 - **Correção**: configurar um provedor de SMTP próprio no Supabase (Authentication → Emails → SMTP Settings) — ex. Resend, que já está no catálogo de integrações usado no outro produto (Lovable). Tem plano free generoso o suficiente pro volume desse app.
-- **Por que está pendente**: não é bloqueante pro uso atual (poucas contas), e configurar SMTP requer decidir/criar conta num provedor de e-mail — decisão de custo/ferramenta, não só código.
+- **DEIXOU DE SER OPCIONAL EM 2026-09-10.** Duas descobertas mudaram o peso deste item:
+  1. **Ele bloqueia a recuperação de senha por código.** O painel do plano Free recusa
+     editar o corpo do template ("Set up custom SMTP to edit the source"), então o
+     `{{ .Token }}` — que gera o código de 6 dígitos — não entra. A tela de código já
+     está implementada e no ar, mas o código não tem como chegar na aluna. O e-mail
+     atual só traz link.
+  2. **O limite já está sendo atingido com alunas reais.** Nas 24h até 10/09:
+     **30 pedidos de recuperação e 4 bloqueios por limite de envio**. Não é mais
+     hipótese de "início de turma" — está acontecendo.
+- **Por que isso importa tanto**: o link de recuperação falha de forma intermitente por
+  pré-carregamento de e-mail (ver `app/(auth)/nova-senha/page.tsx`), e o código digitado
+  é a solução recomendada pela documentação do Supabase. Sem SMTP, não há solução.
+- **Dados prontos pra configuração** (Authentication → Emails → SMTP Settings):
+  host `smtp.resend.com`, porta `587`, usuário `resend`, senha = a API key do Resend.
+  Remetente atual, a substituir: `noreply@mail.app.supabase.io`.
+- **Pendência real**: o Resend exige domínio verificado pra enviar. Precisa decidir qual
+  domínio usar e ter acesso ao DNS dele.
 - Projeto afetado: `vcaxpbynkamdbxwzrklo`.
 
 ### Religar "Confirm email" no Supabase Auth antes de divulgar pras alunas
