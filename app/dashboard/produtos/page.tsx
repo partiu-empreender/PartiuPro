@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Pencil, Plus, Trash2 } from 'lucide-react';
 import PageShell from '@/components/shared/PageShell';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import PageHeader from '@/components/shared/PageHeader';
@@ -25,6 +25,8 @@ interface Produto {
   price: number;
   cost: number;
   tipo: TipoProduto;
+  /** Falso = escondido do catálogo e do seletor de venda. Nunca apagado. */
+  is_active?: boolean;
 }
 
 const brl = (n: number) =>
@@ -140,13 +142,38 @@ export default function ProdutosPage() {
     await carregar();
   };
 
+  /**
+   * Esconde ou mostra um item do catálogo.
+   *
+   * Existe porque excluir era a única saída para um item que saiu de linha — e
+   * excluir apaga um produto que ainda aparece no histórico de vendas. Aqui o
+   * item some do catálogo e do seletor de venda, e o que já foi vendido fica
+   * exatamente como está.
+   */
+  const alternarVisibilidade = async (p: Produto) => {
+    await fetch(`/api/produtos/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: p.is_active === false }),
+    });
+    await carregar();
+  };
+
   const cartao = (p: Produto) => {
     const lucro = p.price - p.cost;
     const margem = p.price > 0 ? (lucro / p.price) * 100 : 0;
+    const oculto = p.is_active === false;
     return (
-      <Card key={p.id}>
+      <Card key={p.id} className={oculto ? 'opacity-60' : undefined}>
         <CardContent className="space-y-4 p-7">
-          <h3 className="truncate text-lg font-bold">{p.name}</h3>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="truncate text-lg font-bold">{p.name}</h3>
+            {oculto && (
+              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                Oculto
+              </span>
+            )}
+          </div>
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between border-b pb-2">
               <dt className="text-muted-foreground">Preço</dt>
@@ -171,6 +198,13 @@ export default function ProdutosPage() {
             </Button>
             <Button
               variant="outline"
+              aria-label={oculto ? `Mostrar ${p.name} no catálogo` : `Ocultar ${p.name} do catálogo`}
+              onClick={() => alternarVisibilidade(p)}
+            >
+              {oculto ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="outline"
               className="text-destructive hover:bg-destructive/10"
               aria-label={`Excluir ${p.name}`}
               onClick={() => remover(p.id)}
@@ -184,7 +218,11 @@ export default function ProdutosPage() {
   };
 
   const secao = (tipo: TipoProduto) => {
-    const itens = produtos.filter((p) => (p.tipo ?? 'produto') === tipo);
+    // Os ocultos saem daqui e ganham seção própria no fim da página: some do
+    // caminho do dia a dia sem virar item invisível que ninguém acha de novo.
+    const itens = produtos.filter(
+      (p) => (p.tipo ?? 'produto') === tipo && p.is_active !== false,
+    );
     const rotulo = ROTULOS[tipo];
     return (
       <section className="space-y-4">
@@ -210,6 +248,27 @@ export default function ProdutosPage() {
       </section>
     );
   };
+
+  // Seção dos ocultos. Só aparece quando existe algum — uma seção vazia
+  // permanente só ocuparia espaço.
+  const ocultos = produtos.filter((p) => p.is_active === false);
+
+  const secaoDosOcultos = () =>
+    ocultos.length === 0 ? null : (
+      <section className="space-y-4">
+        <div className="border-b pb-3">
+          <h2 className="text-xl font-bold">
+            Ocultos{' '}
+            <span className="text-base font-normal text-muted-foreground">({ocultos.length})</span>
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Não aparecem no catálogo nem na hora de registrar uma venda. As vendas antigas
+            continuam com eles.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{ocultos.map(cartao)}</div>
+      </section>
+    );
 
   return (
     <PageShell>
@@ -241,6 +300,7 @@ export default function ProdutosPage() {
         <div className="space-y-10">
           {secao('produto')}
           {secao('adicional')}
+          {secaoDosOcultos()}
         </div>
       )}
 

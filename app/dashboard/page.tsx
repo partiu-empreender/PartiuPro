@@ -283,7 +283,13 @@ export default function DashboardPage() {
           vendas: result.vendas || [],
           vendasDoMes: result.vendas_mes || [],
           relatorio: relatorioDoMes,
-          catalogo: resProdutos.ok ? produtosResult.data || [] : [],
+          // Filtra os ocultos AQUI, na entrada: assim nenhum ponto da tela
+          // que use `catalogo` precisa lembrar de filtrar de novo.
+          catalogo: resProdutos.ok
+            ? (produtosResult.data || []).filter(
+                (p: ProdutoCatalogo & { is_active?: boolean }) => p.is_active !== false,
+              )
+            : [],
         });
       }
     } catch (error) {

@@ -8,12 +8,36 @@ import PageShell from '@/components/shared/PageShell';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import PageHeader from '@/components/shared/PageHeader';
 import { hojeBrasil } from '@/lib/datas';
+import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
+import { Trash2 } from 'lucide-react';
 
 interface Atendimento {
   id: string;
   data: string;
   pessoas_atendidas: number;
 }
+
+/** Atendimento nominal (migration 018). Convive com a contagem acima. */
+interface PessoaAtendida {
+  id: string;
+  data: string;
+  nome: string;
+  telefone: string | null;
+  ddi: string | null;
+  origem: string | null;
+  observacao: string | null;
+}
+
+// Mesma lógica de customers.how_knew: sugestões, não lista fechada. Quem vende
+// em bazar precisa poder escrever o dela em vez de marcar "Outros".
+const ORIGENS_SUGERIDAS = [
+  'Instagram',
+  'WhatsApp',
+  'Indicação',
+  'Feira',
+  'Loja física',
+  'Google',
+];
 
 const hoje = () => hojeBrasil();
 
@@ -38,11 +62,31 @@ export default function AtendimentosPage() {
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  // Registro nominal. Fica recolhido porque a contagem rápida é o caminho de
+  // sempre — quem está no meio de uma feira digita um número e segue.
+  const [pessoasAtendidas, setPessoasAtendidas] = useState<PessoaAtendida[]>([]);
+  const [formAberto, setFormAberto] = useState(false);
+  const [nome, setNome] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [origem, setOrigem] = useState('');
+  const [salvandoPessoa, setSalvandoPessoa] = useState(false);
+
   const carregar = async () => {
     try {
-      const res = await fetch('/api/atendimentos');
+      const [res, resPessoas] = await Promise.all([
+        fetch('/api/atendimentos'),
+        fetch('/api/atendimentos/pessoas'),
+      ]);
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Erro ao carregar atendimentos');
+
+      // O nominal não pode derrubar a tela: se ele falhar, a contagem — que é
+      // o que sustenta a conversão — continua aparecendo.
+      if (resPessoas.ok) {
+        const dados = await resPessoas.json();
+        setPessoasAtendidas(dados.data || []);
+      }
+
       setAtendimentos(result.data || []);
       setVendasPorDia(result.vendasPorDia || {});
       gravarMemoria('atendimentos', {
@@ -89,6 +133,63 @@ export default function AtendimentosPage() {
     }
   };
 
+  const salvarPessoa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErro('');
+
+    if (!nome.trim()) {
+      setErro('Informe o nome de quem você atendeu.');
+      return;
+    }
+
+    setSalvandoPessoa(true);
+    try {
+      const res = await fetch('/api/atendimentos/pessoas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data,
+          nome: nome.trim(),
+          telefone: telefone.trim() || undefined,
+          origem: origem.trim() || undefined,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Erro ao registrar');
+
+      setNome('');
+      setTelefone('');
+      setOrigem('');
+      await carregar();
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : 'Erro ao registrar');
+    } finally {
+      setSalvandoPessoa(false);
+    }
+  };
+
+  const removerPessoa = async (id: string) => {
+    await fetch(`/api/atendimentos/pessoas?id=${id}`, { method: 'DELETE' });
+    await carregar();
+  };
+
+  // Quantos nominais em cada dia — para a tabela mostrar a contagem que vale.
+  const nominaisPorDia = pessoasAtendidas.reduce<Record<string, number>>((acc, p) => {
+    acc[p.data] = (acc[p.data] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  // Um dia em que ela SÓ anotou nomes, sem digitar a contagem, não existe em
+  // `atendimentos` — e sumiria do histórico inteiro. Estes dias entram como
+  // linhas próprias, para que anotar nome nunca esconda o trabalho do dia.
+  const diasSoNominais = Object.keys(nominaisPorDia)
+    .filter((dia) => !atendimentos.some((a) => a.data === dia))
+    .map((dia) => ({ id: `nominal-${dia}`, data: dia, pessoas_atendidas: 0 }));
+
+  const linhasDoHistorico = [...atendimentos, ...diasSoNominais].sort((a, b) =>
+    a.data > b.data ? -1 : 1,
+  );
+
   return (
     <PageShell width="narrow">
       <PageHeader
@@ -133,11 +234,95 @@ export default function AtendimentosPage() {
         </Button>
       </form>
 
+      {/* REGISTRO NOMINAL. Recolhido de propósito: a contagem rápida acima é o
+          caminho de sempre, e quem está no meio de uma feira digita um número
+          e segue. Quem quer acompanhar pessoa a pessoa abre isto. */}
+      <section className="mt-6">
+        <button
+          type="button"
+          onClick={() => setFormAberto((a) => !a)}
+          className="text-sm font-semibold text-primary hover:underline"
+        >
+          {formAberto ? '− Anotar quem foi' : '+ Anotar quem foi (nome, contato, origem)'}
+        </button>
+
+        {formAberto && (
+          <form onSubmit={salvarPessoa} className="vidro mt-3 space-y-3 rounded-2xl p-4 sm:p-6">
+            <p className="text-xs text-muted-foreground">
+              Anotar nome não muda a sua contagem do dia: vale sempre o maior entre o número
+              que você digitou e quantas pessoas você detalhou.
+            </p>
+            <Input
+              aria-label="Nome de quem você atendeu"
+              placeholder="Nome"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                aria-label="Telefone"
+                inputMode="tel"
+                placeholder="Telefone (opcional)"
+                value={telefone}
+                onChange={(e) => setTelefone(aplicarMascaraTelefone(e.target.value))}
+              />
+              <Input
+                aria-label="Origem"
+                list="origens-de-atendimento"
+                autoComplete="off"
+                placeholder="Veio de onde?"
+                value={origem}
+                onChange={(e) => setOrigem(e.target.value)}
+              />
+              <datalist id="origens-de-atendimento">
+                {ORIGENS_SUGERIDAS.map((o) => (
+                  <option key={o} value={o} />
+                ))}
+              </datalist>
+            </div>
+            <Button type="submit" variant="outline" className="w-full" disabled={salvandoPessoa}>
+              {salvandoPessoa ? 'Salvando...' : 'Anotar atendimento'}
+            </Button>
+          </form>
+        )}
+
+        {pessoasAtendidas.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <h3 className="text-sm font-semibold text-muted-foreground">
+              Pessoas anotadas ({pessoasAtendidas.length})
+            </h3>
+            {pessoasAtendidas.slice(0, 20).map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm"
+              >
+                <div className="min-w-0">
+                  <span className="font-medium">{p.nome}</span>
+                  <span className="ml-2 text-muted-foreground">
+                    {[fmtData(p.data), p.origem, formatarTelefone(p.telefone)]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  aria-label={`Remover ${p.nome}`}
+                  onClick={() => removerPessoa(p.id)}
+                  className="shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section className="mt-8 space-y-3">
         <h2 className="text-lg font-bold">Histórico</h2>
         {loading ? (
           <p className="text-center py-8 text-muted-foreground">Carregando...</p>
-        ) : atendimentos.length === 0 ? (
+        ) : linhasDoHistorico.length === 0 ? (
           <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             Nenhum atendimento registrado ainda.
           </p>
@@ -153,13 +338,17 @@ export default function AtendimentosPage() {
                 </tr>
               </thead>
               <tbody>
-                {atendimentos.map((a) => {
+                {linhasDoHistorico.map((a) => {
                   const vendasDia = vendasPorDia[a.data] ?? 0;
-                  const conv = a.pessoas_atendidas > 0 ? (vendasDia / a.pessoas_atendidas) * 100 : 0;
+                  // Vale o MAIOR entre o digitado e o detalhado, nunca a soma:
+                  // quem digitou 12 e anotou 3 atendeu 12, e somar inflaria a
+                  // conversão. Regra em lib/atendimentos.ts, com teste.
+                  const total = Math.max(a.pessoas_atendidas, nominaisPorDia[a.data] ?? 0);
+                  const conv = total > 0 ? (vendasDia / total) * 100 : 0;
                   return (
                     <tr key={a.id} className="border-b last:border-0">
                       <td className="px-4 py-3 font-medium">{fmtData(a.data)}</td>
-                      <td className="px-4 py-3">{a.pessoas_atendidas}</td>
+                      <td className="px-4 py-3">{total}</td>
                       <td className="px-4 py-3">{vendasDia}</td>
                       <td className="px-4 py-3 font-bold">{conv.toFixed(1).replace('.', ',')}%</td>
                     </tr>

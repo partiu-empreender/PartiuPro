@@ -9,6 +9,8 @@ interface AtualizarProdutoRequest {
   price?: number;
   cost?: number;
   tipo?: TipoProduto;
+  /** Falso = escondido do catálogo e do seletor de venda, sem apagar nada. */
+  is_active?: boolean;
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
@@ -33,6 +35,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     // Reclassificar aqui muda só o catálogo. As vendas já registradas guardam
     // o próprio tipo (venda_itens.tipo), então o histórico não é reescrito.
     if (body.tipo !== undefined && TIPOS.includes(body.tipo)) patch.tipo = body.tipo;
+    // Ocultar em vez de excluir: o item some do catalogo e do seletor de venda,
+    // mas as vendas que ja o usaram continuam intactas. Excluir de verdade
+    // apagaria um produto que aparece no historico.
+    if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
 
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });
