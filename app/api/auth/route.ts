@@ -9,7 +9,17 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { action, email, password, full_name, phone, terms_accepted, marketing_consent } = await request.json();
+    const {
+      action,
+      email,
+      password,
+      full_name,
+      phone,
+      terms_accepted,
+      marketing_consent,
+      access_token,
+      refresh_token,
+    } = await request.json();
 
     const supabase = await getRouteHandlerSupabaseClient();
 
@@ -164,6 +174,44 @@ export async function POST(request: Request) {
         },
         { status: 200 },
       );
+    }
+
+    // ============================================
+    // SINCRONIZAR SESSAO (do navegador para os cookies)
+    // ============================================
+    // Existe por causa do fluxo implicito da recuperacao de senha.
+    //
+    // O `verifyOtp` e o `updateUser` rodam NO NAVEGADOR, e no fluxo implicito
+    // a sessao resultante fica so no localStorage. Mas o middleware e os
+    // layouts rodam no SERVIDOR e leem sessao por COOKIE — para eles a pessoa
+    // continuava deslogada.
+    //
+    // O sintoma era desconcertante: depois de criar a senha, o painel abria
+    // com o nome generico "Empreendedora" e sem e-mail (o fallback de
+    // app/dashboard/layout.tsx, quando nada foi lido), parecendo o perfil de
+    // outra pessoa. Ao primeiro clique, o middleware nao achava cookie e
+    // mandava pro login. A conta estava certa o tempo todo; faltava o servidor
+    // enxergar a sessao.
+    //
+    // O login normal nao sofre disso porque ja roda por aqui, e o
+    // `createServerClient` grava os cookies sozinho.
+    if (action === 'sincronizar-sessao') {
+      if (typeof access_token !== 'string' || typeof refresh_token !== 'string') {
+        return NextResponse.json({ error: 'Sessão inválida.' }, { status: 400 });
+      }
+
+      // `setSession` valida os tokens contra o Supabase antes de aceitar —
+      // token forjado nao passa. E o cliente daqui escreve os cookies.
+      const { data, error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+
+      if (error || !data.session) {
+        return NextResponse.json({ error: 'Sessão inválida.' }, { status: 401 });
+      }
+
+      return NextResponse.json({ message: 'Sessão sincronizada' }, { status: 200 });
     }
 
     // ============================================

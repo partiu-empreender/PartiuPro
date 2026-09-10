@@ -224,6 +224,31 @@ export default function NovaSenhaPage() {
         );
         return;
       }
+      // O SERVIDOR PRECISA SABER DA SESSAO ANTES DE NAVEGAR.
+      //
+      // No fluxo implicito a sessao nasce so no navegador. O middleware e os
+      // layouts leem sessao por cookie, entao sem este passo o painel abria
+      // com o nome generico "Empreendedora", sem e-mail, e o primeiro clique
+      // caia no login — parecendo conta de outra pessoa.
+      const { data: sessao } = await supabase.auth.getSession();
+      if (sessao.session) {
+        try {
+          await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'sincronizar-sessao',
+              access_token: sessao.session.access_token,
+              refresh_token: sessao.session.refresh_token,
+            }),
+          });
+        } catch {
+          // Se falhar, a senha JA foi trocada — o que importa esta feito. Ela
+          // cai no login e entra com a senha nova, que e um final aceitavel.
+          // Melhor isso do que travar a tela num erro depois do sucesso.
+        }
+      }
+
       setEstado('salvo');
       // Leva pro painel: a sessão já está válida, não faz sentido pedir login
       // logo depois de ela provar quem é.
