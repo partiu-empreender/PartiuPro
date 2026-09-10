@@ -10,10 +10,32 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
+// O FLUXO DE AUTENTICAÇÃO É `implicit` DE PROPÓSITO, NOS DOIS CLIENTES ABAIXO.
+//
+// O padrão do Supabase é PKCE, e ele quebra a recuperação de senha por e-mail.
+// Quem EMITE o token é o cliente do route handler (`action === 'recuperar'` em
+// app/api/auth/route.ts), então o formato gravado em `auth.users.recovery_token`
+// é decidido aqui — não no cliente do navegador.
+//
+// Com PKCE, o token gravado é um `pkce_…` de 61 caracteres, enquanto o
+// `{{ .Token }}` do e-mail imprime o código de 6 dígitos. O `verifyOtp` compara
+// com o valor GRAVADO, então o código correto é recusado como
+// `token has expired or is invalid`. Medido em produção: pedido às 21:15:07,
+// recusado às 21:15:32, com o token ainda intacto no banco.
+//
+// O link sofre do mesmo mal por outro caminho: o PKCE exige o `code_verifier`
+// guardado no navegador que pediu, que não existe quando o e-mail é aberto no
+// celular.
+//
+// No fluxo implícito o `recovery_token` é o próprio código de 6 dígitos. Se
+// alguém "padronizar" isto de volta para PKCE, os dois caminhos voltam a falhar.
+const OPCOES_DE_AUTH = { flowType: 'implicit' } as const;
+
 // Server-side Supabase client for Server Components
 export async function getServerSupabaseClient() {
   const cookieStore = await cookies();
   return createServerClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: OPCOES_DE_AUTH,
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {
@@ -28,9 +50,12 @@ export async function getServerSupabaseClient() {
 }
 
 // Route Handler Supabase client
+// É ESTE que roda o `resetPasswordForEmail`, ou seja, quem grava o
+// `recovery_token`. Ver a nota sobre `implicit` acima.
 export async function getRouteHandlerSupabaseClient() {
   const cookieStore = await cookies();
   return createServerClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: OPCOES_DE_AUTH,
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {
