@@ -2,6 +2,21 @@
 
 Coisas que foram identificadas mas **deliberadamente adiadas**. Cada item tem o motivo do adiamento, pra não precisar redescobrir o contexto depois.
 
+## Decisões pendentes da Tania
+
+### Reconsentimento da política de privacidade (LGPD)
+- **O que mudou**: em 2026-09-10 o item 5 da política ([lib/legal.ts](lib/legal.ts)) foi reescrito. O texto anterior dizia à aluna para **não** registrar telefone, e-mail ou endereço de clientes — enquanto o sistema **já coletava telefone**, e naquele dia passou a coletar endereço da cliente (migration 014) e nome/contato/endereço de quem recebe o presente (migration 015).
+- **Por que era preciso mexer**: a política descrevia um produto que não existe mais. Ficar como estava significaria orientar a aluna a não fazer exatamente o que a tela pede que ela faça.
+- **O que NÃO foi feito, de propósito**: `TERMS_VERSION` continua em `2026-08-26`. Ela só é gravada no **cadastro** ([app/api/auth/route.ts](app/api/auth/route.ts)); não existe fluxo de reconsentimento. Subir a versão agora não faria ninguém reaceitar — só criaria divergência entre o que as 68 alunas aceitaram e o que está no ar.
+- **A decisão**: as alunas atuais devem reaceitar o texto novo? Se sim, é preciso **construir o fluxo de reconsentimento e subir a versão junto**. Coletar dado de terceiro que não consentiu é escolha de negócio, não consequência técnica.
+- **Se a resposta for não coletar**: as três colunas de presenteado saem com um `DROP COLUMN` — foram criadas soltas em `vendas_diarias`, sem tabela nem índice, justamente para isso.
+
+### Custo histórico do produto no DRE
+- **O que é**: o DRE ([lib/dre.ts](lib/dre.ts)) calcula o custo dos produtos usando `products.cost` — o custo cadastrado **hoje**.
+- **O problema**: o custo de hoje não é o de março. Se a aluna reajustar o custo de uma cesta, o DRE de todos os meses anteriores muda junto.
+- **Por que não foi corrigido agora**: a correção é gravar o custo em `venda_itens` no momento da venda — e isso **não conserta o passado**, só os registros futuros. A tela avisa que o custo é o atual, em vez de fingir precisão histórica.
+- **Quando fazer**: se e quando a Tania disser que o DRE retroativo precisa ser estável. Aí vale a coluna nova e uma migration que preenche o histórico com o custo atual (a melhor aproximação disponível).
+
 ## Segurança
 
 ### Ligar "Leaked Password Protection" no Supabase Auth
