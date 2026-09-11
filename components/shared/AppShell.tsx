@@ -15,6 +15,7 @@ import {
   Target,
   User,
   Users,
+  Wallet,
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -38,6 +39,7 @@ const LINKS = [
   { href: '/dashboard/produtos', label: 'Catálogo', icon: Package },
   { href: '/dashboard/atendimentos', label: 'Atendimentos', icon: HeartHandshake },
   { href: '/dashboard/metas', label: 'Metas', icon: Target },
+  { href: '/dashboard/financeiro', label: 'Financeiro', icon: Wallet },
   { href: '/dashboard/historico', label: 'Histórico', icon: CalendarRange },
 ];
 
