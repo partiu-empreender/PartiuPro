@@ -442,8 +442,13 @@ export default function DashboardPage() {
 
       // Se a data mudou de dia, leva o seletor junto: senao a venda "some" e
       // parece que a edicao falhou.
+      // Mesmo cuidado do cadastro retroativo: os DOIS seletores acompanham.
+      // Mover só o dia deixaria o Raio-X no mês antigo, e a venda corrigida
+      // pareceria ter sumido.
       if (edicaoData !== vendaEmEdicao.data) {
         setDiaEscolhido(edicaoData);
+        const [anoNovo, mesNovo] = edicaoData.split('-');
+        setMesDoRelatorio({ ano: Number(anoNovo), mes: Number(mesNovo) });
       }
       setVendaEmEdicao(null);
       await carregarMetricas();
@@ -825,9 +830,15 @@ export default function DashboardPage() {
         setAvisoRetroativo(
           `Venda de ${dia}/${mes}/${ano} registrada — já entrou no faturamento e nas metas daquele mês.`,
         );
-        // Leva o seletor pro dia da venda: em vez de avisar que ela nao
-        // aparece na lista, a lista passa a mostrá-la.
+        // Leva os DOIS seletores pra venda: o dia e o mês do Raio-X.
+        //
+        // Mover só o dia não bastava, e era a origem do relato "registrei no
+        // mês passado e a venda sumiu". O Raio-X continuava em setembro, o dia
+        // ia pra agosto, e a tela caía no aviso "escolha agosto no Raio-X" —
+        // ou seja, mandava a aluna resolver à mão um desencontro que ela não
+        // causou. Ela concluía, com razão, que a venda tinha ido pro mês errado.
         setDiaEscolhido(dataVenda);
+        setMesDoRelatorio({ ano: Number(ano), mes: Number(mes) });
       }
       // Recarrega e regrava o cache: sem isto, sair e voltar pro dashboard
       // mostraria o faturamento de antes da venda.
