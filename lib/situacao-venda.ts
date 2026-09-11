@@ -98,3 +98,59 @@ export function resumoDaSituacao(pagamento: Pagamento, entrega: Entrega): string
     .map((p) => (p === 'receber' ? ROTULO_PAGAMENTO.pendente : ROTULO_ENTREGA.pendente))
     .join(' · ');
 }
+
+/**
+ * FORMA DE PAGAMENTO — o TERCEIRO eixo (migration 020).
+ *
+ * `status` diz SE pagou. Isto diz COMO pagou. São independentes: dá para estar
+ * pendente num Pix combinado, e pago em dinheiro. Se alguém propuser juntar os
+ * dois num campo só, o que se perde é o "pendente" — que é justamente o que
+ * faz a aluna cobrar.
+ *
+ * Lista FECHADA, ao contrário de `how_knew` e das categorias do financeiro.
+ * A diferença é o uso: aquelas são livres porque servem para ler uma a uma;
+ * esta existe para AGRUPAR ("quanto entrou por Pix este mês"), e campo livre
+ * viraria 'pix', 'PIX', 'Pix ' e 'pics' na mesma coluna.
+ */
+export type FormaDePagamento =
+  | 'pix'
+  | 'dinheiro'
+  | 'credito'
+  | 'debito'
+  | 'transferencia'
+  | 'outro';
+
+export const FORMAS_DE_PAGAMENTO: FormaDePagamento[] = [
+  'pix',
+  'dinheiro',
+  'credito',
+  'debito',
+  'transferencia',
+  'outro',
+];
+
+export const ROTULO_FORMA_PAGAMENTO: Record<FormaDePagamento, string> = {
+  pix: 'Pix',
+  dinheiro: 'Dinheiro',
+  credito: 'Crédito',
+  debito: 'Débito',
+  transferencia: 'Transferência',
+  outro: 'Outro',
+};
+
+/**
+ * A rota confia nisto para não deixar passar valor que o CHECK do banco
+ * recusaria — o erro do Postgres não diz nada que a aluna possa entender.
+ */
+export function ehFormaDePagamento(valor: unknown): valor is FormaDePagamento {
+  return typeof valor === 'string' && FORMAS_DE_PAGAMENTO.includes(valor as FormaDePagamento);
+}
+
+/**
+ * Rótulo para exibir. Null quando não foi informada — e é assim que ficam
+ * TODAS as vendas anteriores a 11/09/2026, porque não dá para saber como foram
+ * pagas. Inventar 'dinheiro' faria um relatório de formas nascer mentindo.
+ */
+export function rotuloDaForma(forma: unknown): string | null {
+  return ehFormaDePagamento(forma) ? ROTULO_FORMA_PAGAMENTO[forma] : null;
+}

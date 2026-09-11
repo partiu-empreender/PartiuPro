@@ -37,8 +37,10 @@ const FEEDBACK_ZERADO: FeedbackDaVenda = {
 };
 import {
   ehEntrega,
+  ehFormaDePagamento,
   ehPagamento,
   type Entrega,
+  type FormaDePagamento,
   type Pagamento,
 } from '@/lib/situacao-venda';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -76,6 +78,8 @@ interface RegistrarVendaRequest {
   presenteado_endereco?: string;
   /** Percentual de desconto, 0 a 100. */
   desconto_percentual?: number;
+  /** COMO pagou. Eixo independente de `status`, que diz SE pagou. */
+  forma_pagamento?: FormaDePagamento;
 }
 
 /**
@@ -231,6 +235,9 @@ export async function POST(request: NextRequest) {
         delivery_period: body.delivery_period || null,
         notes: body.notes || null,
         desconto_percentual,
+        // Null quando não informada, e não um padrão: chutar 'dinheiro' faria
+        // o relatório de formas de pagamento nascer mentindo.
+        forma_pagamento: ehFormaDePagamento(body.forma_pagamento) ? body.forma_pagamento : null,
         // Dados de terceiro que não consentiu: guardados porque a Tania pediu
         // (ver migration 015), e só quando a aluna escolhe preencher.
         presenteado_nome: body.presenteado_nome?.trim() || null,
@@ -443,6 +450,7 @@ export async function GET(request: NextRequest) {
           faturamento_total,
           status,
           entrega,
+          forma_pagamento,
           venda_itens (
             id,
             produto_id,
@@ -732,6 +740,7 @@ export async function PATCH(request: NextRequest) {
       feedback_google_feito?: unknown;
       feedback_presenteado_pedido?: unknown;
       feedback_presenteado_feito?: unknown;
+      forma_pagamento?: unknown;
     } = await request.json();
 
     const patch: {
@@ -749,6 +758,7 @@ export async function PATCH(request: NextRequest) {
       feedback_google_feito?: boolean;
       feedback_presenteado_pedido?: boolean;
       feedback_presenteado_feito?: boolean;
+      forma_pagamento?: FormaDePagamento | null;
     } = {};
 
     // Valida na rota em vez de deixar o CHECK do banco recusar: o erro do
@@ -800,6 +810,18 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({ error: `Campo ${campo} inválido.` }, { status: 400 });
         }
         patch[campo] = valor && valor.trim() ? valor.trim() : null;
+      }
+    }
+
+    // Forma de pagamento: null explicito APAGA ("não informada"), o que
+    // permite desfazer uma escolha errada em vez de ficar preso a ela.
+    if (body.forma_pagamento !== undefined) {
+      if (body.forma_pagamento === null || body.forma_pagamento === '') {
+        patch.forma_pagamento = null;
+      } else if (ehFormaDePagamento(body.forma_pagamento)) {
+        patch.forma_pagamento = body.forma_pagamento;
+      } else {
+        return NextResponse.json({ error: 'Forma de pagamento inválida.' }, { status: 400 });
       }
     }
 

@@ -27,10 +27,14 @@ import { hojeBrasil, motivoDataDeVendaInvalida, nomeDoMes, partesHojeBrasil } fr
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import { aplicarMascaraMoeda, parsearMoeda } from '@/lib/moeda';
 import {
+  FORMAS_DE_PAGAMENTO,
   ROTULO_ENTREGA,
+  ROTULO_FORMA_PAGAMENTO,
   ROTULO_PAGAMENTO,
   resumoDaSituacao,
+  rotuloDaForma,
   type Entrega,
+  type FormaDePagamento,
   type Pagamento,
 } from '@/lib/situacao-venda';
 import { EtiquetaToggle, type Etiqueta } from '@/components/shared/EtiquetaBadge';
@@ -85,6 +89,8 @@ interface VendaDiaria {
   faturamento_total: number;
   status: Pagamento;
   entrega: Entrega;
+  /** COMO pagou. Null nas vendas anteriores a 11/09/2026. */
+  forma_pagamento: FormaDePagamento | null;
   venda_itens: VendaItemView[];
 }
 
@@ -177,6 +183,12 @@ export default function DashboardPage() {
   const [presenteadoContato, setPresenteadoContato] = useState('');
   const [presenteadoEndereco, setPresenteadoEndereco] = useState('');
   const [descontoPercentual, setDescontoPercentual] = useState('');
+
+  // Forma de pagamento: COMO pagou. Eixo separado de `pagamentoVenda`, que diz
+  // SE pagou — dá pra estar pendente num Pix combinado. Começa vazia e pode
+  // ficar vazia: nem toda aluna acompanha isso, e obrigar travaria o registro
+  // rápido, que é o caminho comum.
+  const [formaPagamento, setFormaPagamento] = useState<FormaDePagamento | ''>('');
   // Ocasião DESTA venda (aniversário, Namorados). Não confundir com
   // `etiquetasDaNova`, que marca o que a CLIENTE é pra sempre: a mesma pessoa
   // compra pro aniversário em junho e pro Natal em dezembro.
@@ -231,6 +243,7 @@ export default function DashboardPage() {
   const [edicaoCliente, setEdicaoCliente] = useState('');
   const [edicaoItens, setEdicaoItens] = useState<NovoItemForm[]>([]);
   const [edicaoFrete, setEdicaoFrete] = useState('');
+  const [edicaoForma, setEdicaoForma] = useState<FormaDePagamento | ''>('');
   const [erroEdicao, setErroEdicao] = useState('');
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [excluindoVenda, setExcluindoVenda] = useState(false);
@@ -382,6 +395,7 @@ export default function DashboardPage() {
     setVendaEmEdicao(venda);
     setEdicaoData(venda.data);
     setEdicaoCliente(venda.cliente_nome);
+    setEdicaoForma(venda.forma_pagamento ?? '');
     setEdicaoItens(
       (venda.venda_itens || []).map((i) => ({
         produto_nome: i.produto_nome,
@@ -423,6 +437,9 @@ export default function DashboardPage() {
         body: JSON.stringify({
           data: edicaoData,
           cliente_nome: edicaoCliente.trim(),
+          // String vazia vira null no servidor: dá pra APAGAR uma forma
+          // escolhida por engano, e não só trocá-la por outra.
+          forma_pagamento: edicaoForma,
           // `parsearMoeda` porque Number('100.000') devolve 100 — o separador
           // de milhar brasileiro viraria um valor 1000x menor.
           shipping_cost: edicaoFrete.trim() ? parsearMoeda(edicaoFrete) : 0,
@@ -518,6 +535,7 @@ export default function DashboardPage() {
     setPresenteadoContato('');
     setPresenteadoEndereco('');
     setDescontoPercentual('');
+    setFormaPagamento('');
     setOcasioesDaVenda([]);
     setPagamentoVenda('pago');
     setEntregaAberta(false);
@@ -804,6 +822,7 @@ export default function DashboardPage() {
           tag_ids: ocasioesDaVenda.length ? ocasioesDaVenda : undefined,
           cliente_telefone: clienteTelefone.trim() || undefined,
           status: pagamentoVenda,
+          forma_pagamento: formaPagamento || undefined,
           delivery_date: dataEntrega || undefined,
           delivery_period: periodoEntrega || undefined,
           bairro: bairroEntrega.trim() || undefined,
@@ -1363,6 +1382,13 @@ export default function DashboardPage() {
                           <h4 className="font-semibold">{venda.cliente_nome}</h4>
                           <p className="text-sm text-muted-foreground">
                             {(venda.venda_itens || []).map((item) => item.produto_nome).join(', ') || 'Sem itens'}
+                            {/* A forma entra junto dos itens, e só quando foi
+                                informada: as vendas anteriores a 11/09/2026 não
+                                têm essa informação, e um "—" em cada linha
+                                antiga sujaria a lista sem dizer nada. */}
+                            {rotuloDaForma(venda.forma_pagamento) && (
+                              <span className="ml-1">· {rotuloDaForma(venda.forma_pagamento)}</span>
+                            )}
                           </p>
                           {/* Etiqueta só quando há o que fazer: venda paga e
                               entregue não ganha selo, senão as duas que pedem
@@ -1724,6 +1750,25 @@ export default function DashboardPage() {
                     entrar. Ela fica marcada como &ldquo;a receber&rdquo; na lista.
                   </p>
                 )}
+
+                {/* COMO pagou — eixo separado do SE pagou, logo acima.
+                    Opcional: quem não acompanha isso deixa em branco e segue,
+                    em vez de ter o registro travado por um campo a mais.
+                    Aparece também quando o pagamento está pendente, porque a
+                    forma costuma já estar combinada ("ela vai mandar o Pix"). */}
+                <select
+                  aria-label="Forma de pagamento"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={formaPagamento}
+                  onChange={(e) => setFormaPagamento(e.target.value as FormaDePagamento | '')}
+                >
+                  <option value="">Forma de pagamento (opcional)</option>
+                  {FORMAS_DE_PAGAMENTO.map((forma) => (
+                    <option key={forma} value={forma}>
+                      {ROTULO_FORMA_PAGAMENTO[forma]}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Ocasião DESTA venda.
@@ -2265,6 +2310,23 @@ export default function DashboardPage() {
               >
                 Adicionar item
               </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edicao-forma">Forma de pagamento</Label>
+              <select
+                id="edicao-forma"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={edicaoForma}
+                onChange={(e) => setEdicaoForma(e.target.value as FormaDePagamento | '')}
+              >
+                <option value="">Não informada</option>
+                {FORMAS_DE_PAGAMENTO.map((forma) => (
+                  <option key={forma} value={forma}>
+                    {ROTULO_FORMA_PAGAMENTO[forma]}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">

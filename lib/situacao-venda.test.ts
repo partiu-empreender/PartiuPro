@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   contaComoFaturamento,
   ehEntrega,
+  ehFormaDePagamento,
   ehPagamento,
   pendenciasDaVenda,
   resumoDaSituacao,
+  rotuloDaForma,
 } from '@/lib/situacao-venda';
 
 /**
@@ -85,5 +87,46 @@ describe('validação do que vem de fora', () => {
     // Os eixos não se misturam: 'entregue' não é forma de pagamento.
     expect(ehPagamento('entregue')).toBe(false);
     expect(ehEntrega('pago')).toBe(false);
+  });
+});
+
+describe('forma de pagamento', () => {
+  // O eixo novo (migration 020). O que se testa aqui é que ele NÃO se
+  // confunde com `status`: um diz se pagou, o outro diz como.
+  it('aceita só as formas que o banco aceita', () => {
+    expect(ehFormaDePagamento('pix')).toBe(true);
+    expect(ehFormaDePagamento('transferencia')).toBe(true);
+    expect(ehFormaDePagamento('outro')).toBe(true);
+  });
+
+  it('recusa lixo, tipo errado e valores dos OUTROS eixos', () => {
+    expect(ehFormaDePagamento('boleto')).toBe(false);
+    expect(ehFormaDePagamento('')).toBe(false);
+    expect(ehFormaDePagamento(null)).toBe(false);
+    expect(ehFormaDePagamento(3)).toBe(false);
+    // Os três eixos não se misturam: 'pago' é status, 'entregue' é entrega.
+    expect(ehFormaDePagamento('pago')).toBe(false);
+    expect(ehFormaDePagamento('entregue')).toBe(false);
+  });
+
+  // Case-sensitive de propósito: a coluna guarda o valor canônico, e aceitar
+  // 'PIX' aqui deixaria passar para o banco algo que o CHECK recusaria.
+  it('não aceita variação de caixa', () => {
+    expect(ehFormaDePagamento('PIX')).toBe(false);
+    expect(ehFormaDePagamento('Pix')).toBe(false);
+  });
+
+  it('mostra o rótulo em português', () => {
+    expect(rotuloDaForma('pix')).toBe('Pix');
+    expect(rotuloDaForma('credito')).toBe('Crédito');
+  });
+
+  // Null é o ponto: toda venda anterior a 11/09/2026 tem a forma em branco, e
+  // não dá pra saber como foi paga. Um rótulo inventado faria o relatório de
+  // formas nascer mentindo.
+  it('não inventa rótulo quando a forma não foi informada', () => {
+    expect(rotuloDaForma(null)).toBeNull();
+    expect(rotuloDaForma(undefined)).toBeNull();
+    expect(rotuloDaForma('boleto')).toBeNull();
   });
 });
