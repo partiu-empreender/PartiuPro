@@ -1,14 +1,28 @@
 -- ============================================================
--- SQL PARA RODAR NO PAINEL DO SUPABASE (SQL Editor)
--- Projeto: vcaxpbynkamdbxwzrklo ("partiu-empreender's Project")
--- Data: 21/09/2026
+-- JÁ FOI EXECUTADO EM 21/09/2026. NÃO RODE DE NOVO.
 -- ============================================================
 --
--- São duas limpezas independentes. Rode na ordem, conferindo o resultado de
--- cada uma antes de ir para a próxima.
+-- Projeto: vcaxpbynkamdbxwzrklo ("partiu-empreender's Project")
 --
--- Eu não pude executar estes comandos: apagar muitas linhas de uma vez é uma
--- ação bloqueada para mim por segurança, e não tentei contornar.
+-- Fica aqui como registro do que foi feito e como foi apurado. Rodar de novo
+-- não quebraria nada (as consultas não encontram mais nada para apagar), mas
+-- o arquivo é histórico, não procedimento.
+--
+-- RESULTADO:
+--   Parte 1 — 13 linhas de itens duplicados apagadas, em 8 vendas.
+--             A "Declaração" de abril voltou a ser 2, como a aluna dizia.
+--             Nenhuma venda duplicada restante.
+--   Parte 2 — 3 contas de teste e suas 9 vendas apagadas.
+--             Alunas: 117 → 114. Faturamento: R$ 117.522,34 → R$ 114.131,34.
+--             Zero órfãos, 1 admin preservado.
+--
+-- UM DESVIO DO PLANO, no passo 2.2: apagar a conta direto falhou com
+-- violação de chave estrangeira — `venda_itens.produto_id` referencia
+-- `products` sem ON DELETE, e o cascade não garante a ordem. Conferi antes
+-- que as 12 linhas envolvidas eram todas internas à própria conta de teste
+-- (nenhuma aluna real apontava para lá) e apaguei as VENDAS primeiro, o que
+-- soltou a referência. Vale saber disso se um dia for preciso remover outra
+-- conta: vendas antes, conta depois.
 
 
 -- ============================================================
