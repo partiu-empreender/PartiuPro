@@ -87,6 +87,17 @@ export const ETIQUETAS_DE_VENDA_SUGERIDAS: { nome: string; cor: CorEtiqueta }[] 
   { nome: 'Natal', cor: 'emerald' },
   { nome: 'Corporativo', cor: 'violet' },
   { nome: 'Autopresente', cor: 'amber' },
+  // "Outro" fecha a lista de propósito, e é o último por ser o descarte.
+  //
+  // O campo livre ao lado já permitia criar a etiqueta que faltasse, mas
+  // exigia decidir COMO chamar a ocasião no meio do registro de uma venda —
+  // e quem está com o celular na mão registrando às pressas pula o campo. O
+  // resultado era venda sem ocasião nenhuma, que some de todo filtro.
+  //
+  // Um clique em "Outro" preserva o que importa: que HOUVE uma ocasião, e que
+  // ela não é nenhuma das cinco acima. Cinza porque é o rótulo sem cor
+  // própria — se ganhasse uma cor forte, competiria com as ocasiões reais.
+  { nome: 'Outro', cor: 'slate' },
 ];
 
 // O seletor de cor mostra estes rótulos. Sem eles a Tania escolheria entre

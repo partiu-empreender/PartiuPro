@@ -961,7 +961,48 @@ export async function PATCH(request: NextRequest) {
         }
       }
 
-      await supabase.from('venda_itens').delete().eq('venda_id', id);
+      // O RESULTADO DO DELETE E' CONFERIDO, e isso nao e' zelo excessivo.
+      //
+      // Este delete ja falhou EM SILENCIO em producao: `venda_itens` nasceu
+      // sem politica de DELETE (migration 001), e com RLS ligada o Postgres
+      // nao recusa — ele nao apaga nada e responde sucesso. O insert abaixo
+      // entao SOMAVA os itens novos aos antigos, e toda edicao dobrava a
+      // venda. A aluna viu "vendi 2 e aparece 3".
+      //
+      // A migration 021 criou a politica. A conferencia fica porque a proxima
+      // lacuna de permissao nao pode voltar a ser invisivel: melhor a edicao
+      // falhar com uma frase do que gravar um numero errado com ar de certeza.
+      const { error: limpezaError } = await supabase
+        .from('venda_itens')
+        .delete()
+        .eq('venda_id', id);
+
+      if (limpezaError) {
+        return NextResponse.json(
+          {
+            error: 'Não foi possível atualizar os itens da venda. Nada foi alterado.',
+            details: limpezaError.message,
+          },
+          { status: 500 },
+        );
+      }
+
+      // Confere que a tabela ficou vazia ANTES de inserir: um delete sem
+      // permissao volta sem erro, entao o erro acima nao basta como prova.
+      const { count: sobraram } = await supabase
+        .from('venda_itens')
+        .select('id', { count: 'exact', head: true })
+        .eq('venda_id', id);
+
+      if (sobraram && sobraram > 0) {
+        return NextResponse.json(
+          {
+            error:
+              'Não foi possível trocar os itens da venda. Nada foi alterado — tente de novo.',
+          },
+          { status: 500 },
+        );
+      }
 
       const { error: itensError } = await supabase.from('venda_itens').insert(
         itensNovos.map((i) => ({
