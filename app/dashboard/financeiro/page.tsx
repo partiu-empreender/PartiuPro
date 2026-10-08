@@ -24,6 +24,7 @@ import { Trash2 } from 'lucide-react';
 import { hojeBrasil, MESES, nomeDoMes, partesHojeBrasil } from '@/lib/datas';
 import { aplicarMascaraMoeda } from '@/lib/moeda';
 import type { DRE } from '@/lib/dre';
+import type { SaldoDoMes } from '@/lib/saldo';
 
 interface Saida {
   id: string;
@@ -61,6 +62,15 @@ export default function FinanceiroPage() {
 
   const [saidas, setSaidas] = useState<Saida[]>([]);
   const [dre, setDre] = useState<DRE | null>(null);
+  const [saldo, setSaldo] = useState<SaldoDoMes | null>(null);
+  // Falso quando o servidor não conseguiu calcular o saldo (ex.: migration 022
+  // ainda não aplicada). Aí o cartão some, em vez de convidar a informar um
+  // saldo que não teria onde ser gravado.
+  const [saldoDisponivel, setSaldoDisponivel] = useState(false);
+  const [editandoSaldo, setEditandoSaldo] = useState(false);
+  const [valorSaldo, setValorSaldo] = useState('');
+  const [salvandoSaldo, setSalvandoSaldo] = useState(false);
+  const [erroSaldo, setErroSaldo] = useState('');
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
 
@@ -78,6 +88,8 @@ export default function FinanceiroPage() {
       if (!res.ok) throw new Error(result.error || 'Erro ao carregar');
       setSaidas(result.saidas || []);
       setDre(result.dre || null);
+      setSaldo(result.saldo ?? null);
+      setSaldoDisponivel(Boolean(result.saldo_disponivel));
     } catch (error) {
       setErro(error instanceof Error ? error.message : 'Erro ao carregar');
     } finally {
@@ -86,8 +98,62 @@ export default function FinanceiroPage() {
   };
 
   useEffect(() => {
+    setEditandoSaldo(false);
+    setErroSaldo('');
     carregar(ano, mes);
   }, [ano, mes]);
+
+  const salvarSaldo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroSaldo('');
+    if (!valorSaldo.trim()) {
+      setErroSaldo('Informe o valor.');
+      return;
+    }
+    setSalvandoSaldo(true);
+    try {
+      const res = await fetch('/api/financeiro/saldo', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        // STRING, pelo mesmo motivo da saída: o servidor usa `parsearMoeda`.
+        body: JSON.stringify({ ano, mes, valor: valorSaldo }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Erro ao salvar o saldo');
+      setEditandoSaldo(false);
+      await carregar(ano, mes);
+    } catch (error) {
+      setErroSaldo(error instanceof Error ? error.message : 'Erro ao salvar o saldo');
+    } finally {
+      setSalvandoSaldo(false);
+    }
+  };
+
+  const removerSaldo = async () => {
+    setErroSaldo('');
+    const res = await fetch(`/api/financeiro/saldo?ano=${ano}&mes=${mes}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}));
+      setErroSaldo(result.error || 'Erro ao remover o saldo');
+      return;
+    }
+    await carregar(ano, mes);
+  };
+
+  const abrirEdicaoSaldo = () => {
+    // Abre com o saldo inicial que está na tela, informado ou calculado: o
+    // caso comum é ajustar uns reais depois de conferir o extrato, não
+    // redigitar tudo.
+    setValorSaldo(
+      saldo
+        ? `${saldo.saldoInicial < 0 ? '-' : ''}${aplicarMascaraMoeda(
+            Math.abs(saldo.saldoInicial).toFixed(2).replace('.', ','),
+          )}`
+        : '',
+    );
+    setErroSaldo('');
+    setEditandoSaldo(true);
+  };
 
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,6 +236,115 @@ export default function FinanceiroPage() {
         <div className="mb-4 rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
           {erro}
         </div>
+      )}
+
+      {/* Saldo em conta. Vem antes do DRE porque é a pergunta mais
+          imediata — "quanto eu tenho?" — e é o número que ela confere com o
+          extrato do banco. */}
+      {!loading && saldoDisponivel && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Saldo em conta em {nomeDoMes(mes).toLowerCase()}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {erroSaldo && (
+              <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+                {erroSaldo}
+              </div>
+            )}
+
+            {saldo && !editandoSaldo && (
+              <div className="space-y-1 text-sm">
+                <LinhaDoDRE
+                  rotulo="Saldo inicial"
+                  valor={saldo.saldoInicial}
+                  complemento={
+                    saldo.origem === 'informado'
+                      ? 'informado por você'
+                      : `calculado desde ${nomeDoMes(saldo.ancora.mes).toLowerCase()}/${saldo.ancora.ano}`
+                  }
+                />
+                <LinhaDoDRE rotulo="Entradas (vendas pagas)" valor={saldo.entradas} />
+                <LinhaDoDRE rotulo="Saídas (despesas e frete)" valor={-saldo.saidas} />
+                <LinhaDoDRE rotulo="Saldo final do mês" valor={saldo.saldoFinal} destaque />
+                <p className="pt-2 text-xs text-muted-foreground">
+                  Vendas &quot;a receber&quot; só entram quando marcadas como pagas. O saldo final
+                  vira o saldo inicial do mês seguinte — se não bater com o extrato, corrija o
+                  saldo inicial do mês e a conta segue certa dali em diante.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <Button type="button" variant="outline" size="sm" onClick={abrirEdicaoSaldo}>
+                    Corrigir saldo inicial
+                  </Button>
+                  {saldo.origem === 'informado' && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={removerSaldo}
+                    >
+                      Remover saldo informado
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!saldo && !editandoSaldo && (
+              <div className="space-y-3 text-sm">
+                <p className="text-muted-foreground">
+                  Quanto você tinha em conta no início de {nomeDoMes(mes).toLowerCase()}? Com esse
+                  ponto de partida, o app soma o que você vendeu, tira o que saiu e mostra o saldo
+                  real de cada mês. Pode ser um mês anterior ao que você começou a usar o app.
+                </p>
+                <Button type="button" size="sm" onClick={abrirEdicaoSaldo}>
+                  Informar saldo inicial
+                </Button>
+              </div>
+            )}
+
+            {editandoSaldo && (
+              <form onSubmit={salvarSaldo} className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="fin-saldo">
+                    Saldo em conta em 1º de {nomeDoMes(mes).toLowerCase()} de {ano}
+                  </Label>
+                  <Input
+                    id="fin-saldo"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    autoFocus
+                    value={valorSaldo}
+                    onChange={(e) => {
+                      // Mesma máscara do valor da saída, preservando o sinal
+                      // de menos: conta no vermelho é saldo real.
+                      const negativo = e.target.value.trim().startsWith('-');
+                      const mascarado = aplicarMascaraMoeda(e.target.value);
+                      setValorSaldo(negativo ? `-${mascarado}` : mascarado);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Se a conta estava negativa, comece com o sinal de menos (-).
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm" disabled={salvandoSaldo}>
+                    {salvandoSaldo ? 'Salvando...' : 'Salvar saldo'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditandoSaldo(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* O DRE. A ordem das linhas é a da conta, para poder ser lida de cima
