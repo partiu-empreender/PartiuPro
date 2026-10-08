@@ -24,6 +24,12 @@ import {
 } from '@/components/ui/dialog';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
 import { hojeBrasil, motivoDataDeVendaInvalida, nomeDoMes, partesHojeBrasil } from '@/lib/datas';
+import {
+  atalhosDePeriodo,
+  motivoPeriodoInvalido,
+  resumoDoPeriodo,
+  type Periodo,
+} from '@/lib/periodo';
 import { aplicarMascaraTelefone, formatarTelefone } from '@/lib/telefone';
 import { aplicarMascaraMoeda, parsearMoeda } from '@/lib/moeda';
 import {
@@ -31,6 +37,7 @@ import {
   ROTULO_ENTREGA,
   ROTULO_FORMA_PAGAMENTO,
   ROTULO_PAGAMENTO,
+  ordenarPendencias,
   resumoDaSituacao,
   rotuloDaForma,
   type Entrega,
@@ -91,8 +98,23 @@ interface VendaDiaria {
   entrega: Entrega;
   /** COMO pagou. Null nas vendas anteriores a 11/09/2026. */
   forma_pagamento: FormaDePagamento | null;
+  delivery_date?: string | null;
+  delivery_period?: string | null;
   venda_itens: VendaItemView[];
 }
+
+/** 'AAAA-MM-DD' → 'DD/MM/AAAA'. */
+const dataBR = (iso: string) => iso.split('-').reverse().join('/');
+
+/** 'AAAA-MM-DD' → 'DD/MM', para linhas onde o ano é óbvio. */
+const diaMesBR = (iso: string) => iso.split('-').reverse().slice(0, 2).join('/');
+
+/**
+ * Quantas pendências aparecem antes do "ver todas". A lista agora junta todos
+ * os meses, e quem nunca marcou as vendas antigas como entregues teria
+ * dezenas de linhas empurrando o resto da aba para baixo.
+ */
+const PENDENCIAS_VISIVEIS = 8;
 
 type TipoProduto = 'produto' | 'adicional';
 
@@ -125,16 +147,26 @@ const itemEstaVazio = (item: NovoItemForm) =>
 export default function DashboardPage() {
   const emCache = lerMemoria<{
     vendas: VendaDiaria[];
-    vendasDoMes?: VendaDiaria[];
+    pendentes?: VendaDiaria[];
     relatorio: RelatorioMensal | null;
     catalogo: ProdutoCatalogo[];
   }>('dashboard');
-  const [vendas, setVendas] = useState<VendaDiaria[]>(emCache?.vendas ?? []);
-  // O mês inteiro fica na memória pra aba "Vendas do Dia" poder voltar em
-  // qualquer data sem nova ida ao servidor — a API já manda tudo, e com 3 a 40
-  // vendas por mês filtrar aqui custa nada.
-  const [vendasDoMes, setVendasDoMes] = useState<VendaDiaria[]>(emCache?.vendasDoMes ?? []);
-  const [diaEscolhido, setDiaEscolhido] = useState(hojeBrasil());
+  // Vendas que ainda pedem ação, de QUALQUER mês. Antes saíam do mês
+  // carregado e sumiam na virada: a cesta fechada em setembro para entregar
+  // em 06/10 não aparecia mais em outubro.
+  const [pendentes, setPendentes] = useState<VendaDiaria[]>(emCache?.pendentes ?? []);
+  const [verTodasPendencias, setVerTodasPendencias] = useState(false);
+
+  // Período da aba "Vendas do Período". Começa em hoje — que é o que a antiga
+  // "Vendas do Dia" mostrava —, e pode ser qualquer intervalo, inclusive
+  // atravessando meses. O cache guarda as vendas de hoje, então o caminho
+  // comum abre sem esperar o servidor.
+  const [periodo, setPeriodo] = useState<Periodo>(() => ({ de: hojeBrasil(), ate: hojeBrasil() }));
+  const periodoRef = useRef(periodo);
+  periodoRef.current = periodo;
+  const [vendasDoPeriodo, setVendasDoPeriodo] = useState<VendaDiaria[]>(emCache?.vendas ?? []);
+  const [carregandoPeriodo, setCarregandoPeriodo] = useState(emCache === undefined);
+  const [erroPeriodo, setErroPeriodo] = useState('');
   // Mês do Raio-X. Começa no corrente — o caminho normal continua sendo não
   // mexer aqui. Existe porque as alunas que lançaram agosto em setembro viam
   // a tela em branco e achavam que o sistema não tinha salvado.
@@ -216,9 +248,10 @@ export default function DashboardPage() {
   const [itens, setItens] = useState<NovoItemForm[]>([itemVazio()]);
   const [salvando, setSalvando] = useState(false);
   const [formError, setFormError] = useState('');
-  // Confirmação de venda retroativa. A aba "Vendas Registradas" só lista as de
-  // HOJE: sem este aviso, lançar julho salvaria certo e sumiria da tela, e a
-  // aluna concluiria que falhou — lançando tudo de novo e duplicando a venda.
+  // Confirmação de venda retroativa. A lista do período começa em HOJE: sem
+  // este aviso (e sem levar o período até a data, ver `mostrarDataNoPeriodo`),
+  // lançar julho salvaria certo e sumiria da tela, e a aluna concluiria que
+  // falhou — lançando tudo de novo e duplicando a venda.
   const [avisoRetroativo, setAvisoRetroativo] = useState('');
   // Registro de atendimento direto do cartão do Raio-X, sem ir até a aba
   // Atendimentos. É o numero que sustenta conversão e PA: enquanto ficar em
@@ -267,8 +300,7 @@ export default function DashboardPage() {
 
       if (!resVendas.ok) throw new Error(result.error || 'Erro ao carregar vendas');
 
-      setVendas(result.vendas || []);
-      setVendasDoMes(result.vendas_mes || []);
+      setPendentes(result.pendentes || []);
       setCatalogo(resProdutos.ok ? produtosResult.data || [] : []);
 
       // Number() porque coluna NUMERIC pode chegar como texto — e aí a
@@ -294,7 +326,7 @@ export default function DashboardPage() {
       if (anoAtual === anoHoje && mesAtual === mesHoje) {
         gravarMemoria('dashboard', {
           vendas: result.vendas || [],
-          vendasDoMes: result.vendas_mes || [],
+          pendentes: result.pendentes || [],
           relatorio: relatorioDoMes,
           // Filtra os ocultos AQUI, na entrada: assim nenhum ponto da tela
           // que use `catalogo` precisa lembrar de filtrar de novo.
@@ -313,6 +345,60 @@ export default function DashboardPage() {
         setLoading(false);
       }
     }
+  };
+
+  // Busca as vendas do período escolhido. Lê o período do ref pelo mesmo
+  // motivo do mês do Raio-X: quem chama depois de salvar uma venda está num
+  // closure antigo, e pediria o período de antes.
+  const carregarPeriodo = async () => {
+    const alvo = periodoRef.current;
+    const motivo = motivoPeriodoInvalido(alvo.de, alvo.ate);
+    if (motivo) {
+      setErroPeriodo(motivo);
+      setVendasDoPeriodo([]);
+      setCarregandoPeriodo(false);
+      return;
+    }
+    setErroPeriodo('');
+    try {
+      const res = await fetch(`/api/vendas?de=${alvo.de}&ate=${alvo.ate}`);
+      const result = await res.json();
+      // Resposta de um período que ela já trocou: descarta, senão a lista
+      // piscaria com as vendas do intervalo anterior.
+      if (periodoRef.current.de !== alvo.de || periodoRef.current.ate !== alvo.ate) return;
+      if (!res.ok) {
+        setErroPeriodo(result.error || 'Erro ao carregar as vendas do período.');
+        return;
+      }
+      setVendasDoPeriodo(result.vendas_periodo || []);
+    } catch {
+      setErroPeriodo('Erro ao carregar as vendas do período.');
+    } finally {
+      setCarregandoPeriodo(false);
+    }
+  };
+
+  // Na primeira carga não pisca "Carregando..." quando o cache já trouxe as
+  // vendas de hoje; trocar de período, sim — a lista antiga na tela seria de
+  // outro intervalo.
+  const primeiraCargaDoPeriodo = useRef(true);
+  useEffect(() => {
+    if (!primeiraCargaDoPeriodo.current) setCarregandoPeriodo(true);
+    primeiraCargaDoPeriodo.current = false;
+    carregarPeriodo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodo.de, periodo.ate]);
+
+  // Depois de criar, editar, cancelar ou excluir uma venda, as duas coisas
+  // mudam: o Raio-X do mês e a lista do período.
+  const recarregarTudo = () => Promise.all([carregarMetricas(), carregarPeriodo()]);
+
+  // Leva o período até a data de uma venda que acabou de ser salva fora dele.
+  // Sem isso a venda "some" da lista e parece que não foi gravada — e a aluna
+  // lança de novo, duplicando.
+  const mostrarDataNoPeriodo = (data: string) => {
+    const atual = periodoRef.current;
+    if (data < atual.de || data > atual.ate) setPeriodo({ de: data, ate: data });
   };
 
   // Recarrega ao trocar de mês. O intervalo é recriado junto de propósito: sem
@@ -463,12 +549,12 @@ export default function DashboardPage() {
       // Mover só o dia deixaria o Raio-X no mês antigo, e a venda corrigida
       // pareceria ter sumido.
       if (edicaoData !== vendaEmEdicao.data) {
-        setDiaEscolhido(edicaoData);
+        mostrarDataNoPeriodo(edicaoData);
         const [anoNovo, mesNovo] = edicaoData.split('-');
         setMesDoRelatorio({ ano: Number(anoNovo), mes: Number(mesNovo) });
       }
       setVendaEmEdicao(null);
-      await carregarMetricas();
+      await recarregarTudo();
     } catch {
       setErroEdicao('Não foi possível salvar as alterações. Tente novamente.');
     } finally {
@@ -490,7 +576,7 @@ export default function DashboardPage() {
       setVendaParaExcluir(null);
       // Recarrega em vez de tirar da lista na mão: faturamento, ticket médio,
       // conversão e ranking mudam todos com a venda que saiu.
-      await carregarMetricas();
+      await recarregarTudo();
     } catch {
       setErroExclusao('Não foi possível excluir a venda. Tente novamente.');
     } finally {
@@ -513,7 +599,7 @@ export default function DashboardPage() {
       });
       if (!res.ok) return;
       setSituacaoEmEdicao(null);
-      await carregarMetricas();
+      await recarregarTudo();
     } catch {
       // Sem alarde: a situação continua como estava e ela tenta de novo.
     } finally {
@@ -739,33 +825,27 @@ export default function DashboardPage() {
     mesDoRelatorio.ano === partesHojeBrasil().ano &&
     mesDoRelatorio.mes === partesHojeBrasil().mes;
 
-  // As vendas do dia que ela escolheu no seletor. Cai de volta em `vendas`
-  // (hoje, vindo da API) enquanto o mês ainda não carregou.
-  //
-  // `vendasDoMes` guarda o mês escolhido no Raio-X, que nem sempre é o mês do
-  // dia procurado aqui. Sem o teste de pertinência, escolher julho no Raio-X e
-  // vir para esta aba mostraria "nenhuma venda hoje" — mentira, porque o mês de
-  // hoje simplesmente não está carregado. Nesse caso a lista avisa em vez de
-  // afirmar um zero que não conferiu.
-  const prefixoDoMesCarregado = `${mesDoRelatorio.ano}-${String(mesDoRelatorio.mes).padStart(2, '0')}`;
-  const diaEstaNoMesCarregado = diaEscolhido.startsWith(prefixoDoMesCarregado);
-
-  // Vendas do MÊS que ainda pedem alguma coisa. Existe porque a lista abaixo
-  // mostra um dia só: marcar "a receber" numa venda do dia 20 e ela sumiria da
-  // vista no dia seguinte, e um campo de cobrança que não se vê não cobra
-  // ninguém. Aqui elas ficam juntas, independente do dia.
-  const vendasPendentes = vendasDoMes.filter(
-    (v) => v.status !== 'cancelada' && (v.status === 'pendente' || v.entrega === 'pendente'),
-  );
+  // Vendas que ainda pedem alguma coisa, de qualquer mês, na ordem em que ela
+  // precisa agir: a entrega mais próxima no topo. A lista do período mostra
+  // um recorte de datas; esta não pode depender dele, senão a cobrança e a
+  // entrega somem da vista assim que o recorte muda.
+  const vendasPendentes = ordenarPendencias(pendentes);
+  const pendenciasNaTela = verTodasPendencias
+    ? vendasPendentes
+    : vendasPendentes.slice(0, PENDENCIAS_VISIVEIS);
   const totalAReceber = vendasPendentes
     .filter((v) => v.status === 'pendente')
     .reduce((soma, v) => soma + v.faturamento_total, 0);
 
-  const vendasDoDiaEscolhido = diaEstaNoMesCarregado
-    ? vendasDoMes.filter((v) => v.data === diaEscolhido)
-    : diaEscolhido === hojeBrasil()
-      ? vendas
-      : [];
+  const hoje = hojeBrasil();
+  const periodoEhUmDia = periodo.de === periodo.ate;
+  const resumoPeriodo = resumoDoPeriodo(vendasDoPeriodo);
+  const atalhos = atalhosDePeriodo(hoje);
+  const descricaoDoPeriodo = periodoEhUmDia
+    ? periodo.de === hoje
+      ? 'Todas as vendas de hoje'
+      : `Vendas de ${dataBR(periodo.de)}`
+    : `Vendas de ${dataBR(periodo.de)} a ${dataBR(periodo.ate)}`;
 
   // Sugestões de ocasião que ela ainda não criou.
   const ocasioesSugeridas = ETIQUETAS_DE_VENDA_SUGERIDAS.filter(
@@ -856,12 +936,12 @@ export default function DashboardPage() {
         // ia pra agosto, e a tela caía no aviso "escolha agosto no Raio-X" —
         // ou seja, mandava a aluna resolver à mão um desencontro que ela não
         // causou. Ela concluía, com razão, que a venda tinha ido pro mês errado.
-        setDiaEscolhido(dataVenda);
+        mostrarDataNoPeriodo(dataVenda);
         setMesDoRelatorio({ ano: Number(ano), mes: Number(mes) });
       }
       // Recarrega e regrava o cache: sem isto, sair e voltar pro dashboard
       // mostraria o faturamento de antes da venda.
-      await carregarMetricas();
+      await recarregarTudo();
     } catch {
       setFormError('Erro ao registrar venda. Tente novamente.');
     } finally {
@@ -906,7 +986,7 @@ export default function DashboardPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="relatorio">Relatório do Mês</TabsTrigger>
-            <TabsTrigger value="hoje">Vendas do Dia</TabsTrigger>
+            <TabsTrigger value="hoje">Vendas do Período</TabsTrigger>
             <TabsTrigger value="precificacao">Precificação</TabsTrigger>
           </TabsList>
 
@@ -1295,7 +1375,7 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="hoje" className="space-y-4 mt-4">
-            {/* O que ainda pede ação, no mês inteiro. Só aparece quando há
+            {/* O que ainda pede ação, de qualquer mês. Só aparece quando há
                 pendência: um cartão vazio dizendo "nada pendente" seria ruído
                 em toda visita. */}
             {vendasPendentes.length > 0 && (
@@ -1311,7 +1391,7 @@ export default function DashboardPage() {
                   )}
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {vendasPendentes.map((venda) => (
+                  {pendenciasNaTela.map((venda) => (
                     <button
                       key={venda.id}
                       type="button"
@@ -1321,8 +1401,20 @@ export default function DashboardPage() {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{venda.cliente_nome}</p>
                         <p className="text-xs text-muted-foreground">
-                          {venda.data.split('-').reverse().join('/')} ·{' '}
+                          Venda {dataBR(venda.data)} ·{' '}
                           {resumoDaSituacao(venda.status, venda.entrega)}
+                          {/* A data de entrega é o que decide a ordem da
+                              lista; sem ela à vista, a ordem pareceria
+                              aleatória. */}
+                          {venda.entrega === 'pendente' && venda.delivery_date && (
+                            <>
+                              {' '}
+                              <span className="font-medium text-amber-900">
+                                · entrega {diaMesBR(venda.delivery_date)}
+                                {venda.delivery_period ? ` (${venda.delivery_period})` : ''}
+                              </span>
+                            </>
+                          )}
                         </p>
                       </div>
                       <span className="shrink-0 text-sm font-semibold">
@@ -1330,6 +1422,19 @@ export default function DashboardPage() {
                       </span>
                     </button>
                   ))}
+                  {vendasPendentes.length > PENDENCIAS_VISIVEIS && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-amber-900"
+                      onClick={() => setVerTodasPendencias((v) => !v)}
+                    >
+                      {verTodasPendencias
+                        ? 'Mostrar menos'
+                        : `Ver todas (${vendasPendentes.length})`}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -1337,49 +1442,98 @@ export default function DashboardPage() {
             <Card>
               <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1.5">
-                  <CardTitle>Vendas Registradas</CardTitle>
-                  <CardDescription>
-                    {diaEscolhido === hojeBrasil()
-                      ? 'Todas as transações de hoje'
-                      : `Transações de ${diaEscolhido.split('-').reverse().join('/')}`}
-                  </CardDescription>
+                  <CardTitle>Vendas do Período</CardTitle>
+                  <CardDescription>{descricaoDoPeriodo}</CardDescription>
                 </div>
-                {/* Seletor de dia. Filtra em memória: a API já manda o mês
-                    inteiro, então voltar a um dia anterior não custa requisição
-                    nenhuma. Sem isto, uma venda lançada com data retroativa
-                    nunca podia ser conferida na tela. */}
-                <div className="flex items-center gap-2">
+                {/* Seletor de período. Um dia só continua sendo o caso de
+                    "de" igual a "até"; os atalhos cobrem os recortes que as
+                    alunas mais pedem sem digitar data nenhuma. */}
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
                     type="date"
-                    aria-label="Ver vendas de outro dia"
-                    value={diaEscolhido}
-                    max={hojeBrasil()}
-                    onChange={(e) => setDiaEscolhido(e.target.value || hojeBrasil())}
+                    aria-label="Data inicial do período"
+                    value={periodo.de}
+                    max={hoje}
+                    onChange={(e) => {
+                      const de = e.target.value || hoje;
+                      // Puxa o fim junto quando ela passa do fim: um período
+                      // ao contrário só renderia o erro, e o caminho natural
+                      // é escolher o início primeiro.
+                      setPeriodo((p) => ({ de, ate: de > p.ate ? de : p.ate }));
+                    }}
                     className="h-9 w-auto"
                   />
-                  {diaEscolhido !== hojeBrasil() && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDiaEscolhido(hojeBrasil())}
-                    >
-                      Hoje
-                    </Button>
-                  )}
+                  <span className="text-sm text-muted-foreground">até</span>
+                  <Input
+                    type="date"
+                    aria-label="Data final do período"
+                    value={periodo.ate}
+                    min={periodo.de}
+                    max={hoje}
+                    onChange={(e) => setPeriodo((p) => ({ ...p, ate: e.target.value || hoje }))}
+                    className="h-9 w-auto"
+                  />
                 </div>
               </CardHeader>
+              <div className="flex flex-wrap gap-2 px-6 pb-4">
+                {atalhos.map((a) => {
+                  const ativo = a.de === periodo.de && a.ate === periodo.ate;
+                  return (
+                    <Button
+                      key={a.rotulo}
+                      type="button"
+                      size="sm"
+                      variant={ativo ? 'default' : 'outline'}
+                      onClick={() => setPeriodo({ de: a.de, ate: a.ate })}
+                    >
+                      {a.rotulo}
+                    </Button>
+                  );
+                })}
+              </div>
               <CardContent>
                 <div className="space-y-4">
-                  {loading ? (
+                  {/* A soma no fim, pedida junto com o período: "por período e
+                      no fim a soma dos valores". Fica no topo porque é o
+                      número que ela veio buscar; a lista é o detalhe. */}
+                  {!carregandoPeriodo && !erroPeriodo && resumoPeriodo.quantidade > 0 && (
+                    <div className="grid grid-cols-2 gap-3 rounded-2xl bg-muted/50 p-4 sm:grid-cols-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Vendas</p>
+                        <p className="text-lg font-bold">{resumoPeriodo.quantidade}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Total</p>
+                        <p className="text-lg font-bold">{brl(resumoPeriodo.total)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Ticket médio</p>
+                        <p className="text-lg font-bold">{brl(resumoPeriodo.ticketMedio)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">A receber</p>
+                        <p className="text-lg font-bold">{brl(resumoPeriodo.aReceber)}</p>
+                      </div>
+                    </div>
+                  )}
+                  {erroPeriodo ? (
+                    <p className="text-center py-8 text-destructive">{erroPeriodo}</p>
+                  ) : carregandoPeriodo ? (
                     <p className="text-center py-8 text-muted-foreground">Carregando...</p>
-                  ) : vendasDoDiaEscolhido.length > 0 ? (
-                    vendasDoDiaEscolhido.map((venda) => (
+                  ) : vendasDoPeriodo.length > 0 ? (
+                    vendasDoPeriodo.map((venda) => (
                       <div
                         key={venda.id}
                         className="flex items-center justify-between gap-4 rounded-2xl border border-white/60 bg-white/50 p-4 transition-colors hover:bg-accent"
                       >
                         <div className="flex-1">
                           <h4 className="font-semibold">{venda.cliente_nome}</h4>
+                          {/* Com mais de um dia na tela, a data de cada venda
+                              passa a ser informação; num dia só, repetiria o
+                              cabeçalho em toda linha. */}
+                          {!periodoEhUmDia && (
+                            <p className="text-xs text-muted-foreground">{dataBR(venda.data)}</p>
+                          )}
                           <p className="text-sm text-muted-foreground">
                             {(venda.venda_itens || []).map((item) => item.produto_nome).join(', ') || 'Sem itens'}
                             {/* A forma entra junto dos itens, e só quando foi
@@ -1452,19 +1606,11 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     ))
-                  ) : !diaEstaNoMesCarregado && diaEscolhido !== hojeBrasil() ? (
-                    // Só é possível chegar aqui escolhendo, no Raio-X, um mês
-                    // diferente do dia procurado. Melhor pedir a troca do que
-                    // afirmar um zero que não foi conferido.
-                    <p className="text-center py-8 text-muted-foreground">
-                      Escolha {nomeDoMes(Number(diaEscolhido.slice(5, 7))).toLowerCase()} no
-                      Relatório do Mês pra ver as vendas desse dia.
-                    </p>
                   ) : (
                     <p className="text-center py-8 text-muted-foreground">
-                      {diaEscolhido === hojeBrasil()
+                      {periodoEhUmDia && periodo.de === hoje
                         ? 'Nenhuma venda registrada hoje'
-                        : `Nenhuma venda em ${diaEscolhido.split('-').reverse().join('/')}`}
+                        : 'Nenhuma venda nesse período'}
                     </p>
                   )}
                 </div>

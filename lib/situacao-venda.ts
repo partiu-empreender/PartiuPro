@@ -154,3 +154,26 @@ export function ehFormaDePagamento(valor: unknown): valor is FormaDePagamento {
 export function rotuloDaForma(forma: unknown): string | null {
   return ehFormaDePagamento(forma) ? ROTULO_FORMA_PAGAMENTO[forma] : null;
 }
+
+/**
+ * Ordem da lista "Falta resolver": o que tem entrega marcada vem primeiro, da
+ * mais próxima para a mais distante; depois as sem data de entrega, da venda
+ * mais antiga para a mais nova.
+ *
+ * A lista deixou de ser do mês (pedido de out/2026: a venda fechada em
+ * setembro para entregar em 06/10 sumia na virada do mês). Com meses
+ * misturados, a data da VENDA deixou de ser a ordem útil: o que ela precisa
+ * ver no topo é o que tem de sair primeiro.
+ */
+export function ordenarPendencias<
+  T extends { data: string; delivery_date?: string | null },
+>(vendas: T[]): T[] {
+  return [...vendas].sort((a, b) => {
+    const ea = a.delivery_date || '';
+    const eb = b.delivery_date || '';
+    if (ea && eb && ea !== eb) return ea < eb ? -1 : 1;
+    if (ea && !eb) return -1;
+    if (!ea && eb) return 1;
+    return a.data < b.data ? -1 : a.data > b.data ? 1 : 0;
+  });
+}

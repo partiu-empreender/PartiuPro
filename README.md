@@ -6,7 +6,7 @@ Painel de vendas para quem revende presentes/produtos: registra vendas do dia, c
 
 - **Cadastro e login** de conta (uma conta = uma "aluna"/loja, isolada das demais)
 - **Registrar venda do dia**: cliente + itens avulsos (nome, quantidade, preço — sem depender de catálogo de produto)
-- **Dashboard de métricas**: vendas do dia, PA (produtos por atendimento), ticket médio, faturamento
+- **Dashboard de métricas**: vendas do período (com soma e ticket médio), pendências de entrega/recebimento de qualquer mês, PA (produtos por atendimento), ticket médio, faturamento
 - **Calculadora de precificação**: custo direto → despesas fixas → margem → preço sugerido
 - **Painel administrativo** (`/admin`, restrito): visão consolidada de todas as alunas, para acompanhamento
 
@@ -53,7 +53,7 @@ app/
 ├── (auth)/signup/        # Criar conta
 ├── admin/                # Painel administrativo (restrito a contas is_admin)
 ├── api/auth/             # Signup/Login
-├── api/vendas/           # Registrar e listar vendas do dia
+├── api/vendas/           # Registrar e listar vendas (mês, período, pendências)
 ├── dashboard/            # Dashboard da aluna
 components/
 ├── ui/                   # Componentes base

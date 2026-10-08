@@ -19,6 +19,7 @@ import {
 } from '@/lib/datas';
 import { normalizarTelefone } from '@/lib/telefone';
 import { recalcularTotaisDaVenda } from '@/lib/edicao-venda';
+import { motivoPeriodoInvalido } from '@/lib/periodo';
 import { calcularTotalComDesconto } from '@/lib/desconto';
 import {
   coerenteAoMarcarFeito,
@@ -403,8 +404,36 @@ export async function POST(request: NextRequest) {
 }
 
 // ============================================
-// GET - Listar vendas do dia
+// GET - Listar vendas (mês, período e pendências)
 // ============================================
+
+/**
+ * Campos que as listas da tela usam. Um lugar só porque agora são três
+ * consultas (mês, período, pendências) alimentando o mesmo tipo de linha: uma
+ * delas sem `entrega` faria a etiqueta "A entregar" sumir só naquela lista.
+ */
+const SELECT_VENDA_DA_LISTA = `
+  id,
+  data,
+  cliente_nome,
+  faturamento_total,
+  status,
+  entrega,
+  forma_pagamento,
+  delivery_date,
+  delivery_period,
+  venda_itens (
+    id,
+    produto_id,
+    produto_nome,
+    quantidade,
+    preco_unitario,
+    subtotal,
+    tipo
+  )
+`;
+
+const LIMITE_DE_PENDENTES = 200;
 
 export async function GET(request: NextRequest) {
   try {
@@ -421,6 +450,42 @@ export async function GET(request: NextRequest) {
 
     // Busca as vendas do mês (a lista exibida no dashboard filtra só as de hoje a partir daqui)
     const hoje = hojeBrasil();
+    const { searchParams } = new URL(request.url);
+
+    // ============================================
+    // Modo período: ?de=AAAA-MM-DD&ate=AAAA-MM-DD
+    // ============================================
+    // A aba "Vendas do Período" pede um intervalo qualquer, que pode
+    // atravessar meses — por isso não dá pra filtrar o mês do Raio-X em
+    // memória, como a antiga "Vendas do Dia" fazia. Responde só a lista: o
+    // resto (atendimentos, métricas) pertence ao mês e não muda com o período.
+    const de = searchParams.get('de');
+    const ate = searchParams.get('ate');
+    if (de || ate) {
+      const motivo = motivoPeriodoInvalido(de || '', ate || '');
+      if (motivo) {
+        return NextResponse.json({ error: motivo }, { status: 400 });
+      }
+
+      const { data: doPeriodo, error: periodoError } = await supabase
+        .from('vendas_diarias')
+        .select(SELECT_VENDA_DA_LISTA)
+        .eq('workspace_id', user.id)
+        .neq('status', 'cancelada')
+        .gte('data', de as string)
+        .lte('data', ate as string)
+        .order('data', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (periodoError) {
+        return NextResponse.json(
+          { error: 'Erro ao buscar vendas', details: periodoError.message },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({ success: true, vendas_periodo: doPeriodo || [] });
+    }
 
     // Mês pedido pela tela. Sem parâmetro é o mês corrente, que é como a
     // rota sempre se comportou — nenhuma chamada existente muda.
@@ -428,7 +493,6 @@ export async function GET(request: NextRequest) {
     // O seletor existe porque o Raio-X só olhava o mês corrente: a aluna que
     // lançava agosto em setembro via os números certos no banco e a tela em
     // branco, e concluía que o sistema não estava atualizando.
-    const { searchParams } = new URL(request.url);
     const recorte = recorteDoMes(
       parseInt(searchParams.get('ano') || '', 10),
       parseInt(searchParams.get('mes') || '', 10),
@@ -442,26 +506,7 @@ export async function GET(request: NextRequest) {
     // todas as vendas dos meses seguintes.
     let consultaVendas = supabase
       .from('vendas_diarias')
-      .select(
-        `
-          id,
-          data,
-          cliente_nome,
-          faturamento_total,
-          status,
-          entrega,
-          forma_pagamento,
-          venda_itens (
-            id,
-            produto_id,
-            produto_nome,
-            quantidade,
-            preco_unitario,
-            subtotal,
-            tipo
-          )
-        `
-      )
+      .select(SELECT_VENDA_DA_LISTA)
       .eq('workspace_id', user.id)
       // Cancelada não é faturamento. O filtro fica na CONSULTA, e não em
       // lib/metrics.ts, porque quem chama aquelas funções são três lugares
@@ -481,10 +526,27 @@ export async function GET(request: NextRequest) {
       consultaAtendimentosDoMes = consultaAtendimentosDoMes.lte('data', ultimoDiaDoMes);
     }
 
+    // Pendências de QUALQUER mês. Antes vinham do mês carregado, e a venda
+    // fechada em setembro para entregar em 06/10 sumia da lista na virada do
+    // mês — justo quando a entrega se aproximava. O recorte aqui é a
+    // pendência, não a data: o que ainda pede ação fica até ser resolvido.
+    // O teto protege a tela de quem tem centenas de vendas antigas que nunca
+    // foram marcadas como entregues (todas nascem 'pendente', ver migration
+    // 013); a lista mostra quantas são e ela resolve aos poucos.
+    const consultaPendentes = supabase
+      .from('vendas_diarias')
+      .select(SELECT_VENDA_DA_LISTA)
+      .eq('workspace_id', user.id)
+      .neq('status', 'cancelada')
+      .or('status.eq.pendente,entrega.eq.pendente')
+      .order('data', { ascending: false })
+      .limit(LIMITE_DE_PENDENTES);
+
     const [
       { data: vendasDoMes, error: vendasError },
       { data: atendimentosDoDia, error: atendimentosError },
       { data: atendimentosDoMes, error: atendimentosMesError },
+      { data: pendentes, error: pendentesError },
     ] = await Promise.all([
       consultaVendas.order('created_at', { ascending: false }),
       supabase
@@ -494,11 +556,15 @@ export async function GET(request: NextRequest) {
         .eq('data', hoje)
         .maybeSingle(),
       consultaAtendimentosDoMes,
+      consultaPendentes,
     ]);
 
-    if (vendasError) {
+    if (vendasError || pendentesError) {
       return NextResponse.json(
-        { error: 'Erro ao buscar vendas', details: vendasError.message },
+        {
+          error: 'Erro ao buscar vendas',
+          details: vendasError?.message ?? pendentesError?.message,
+        },
         { status: 500 }
       );
     }
@@ -513,8 +579,8 @@ export async function GET(request: NextRequest) {
     }
 
     // `vendas` e `atendimentos_hoje` continuam sendo os de HOJE, mesmo quando
-    // a tela pediu outro mês: quem os usa é a aba "Vendas do Dia", que tem
-    // seletor próprio de data. Pedindo um mês passado eles vêm vazios, o que
+    // a tela pediu outro mês: a tela guarda as de hoje no cache, para a aba
+    // "Vendas do Período" abrir sem esperar o servidor. Pedindo um mês passado eles vêm vazios, o que
     // está certo — hoje não pertence àquele mês.
     const vendas = (vendasDoMes || []).filter((venda) => venda.data === hoje);
     const atendimentos_hoje = atendimentosDoDia?.pessoas_atendidas ?? 0;
@@ -528,6 +594,7 @@ export async function GET(request: NextRequest) {
       success: true,
       vendas,
       vendas_mes: vendasDoMes || [],
+      pendentes: pendentes || [],
       atendimentos_mes,
       metricas,
     });
