@@ -4,6 +4,7 @@ import {
   ehEntrega,
   ehFormaDePagamento,
   ehPagamento,
+  ordenarPendencias,
   pendenciasDaVenda,
   resumoDaSituacao,
   rotuloDaForma,
@@ -128,5 +129,17 @@ describe('forma de pagamento', () => {
     expect(rotuloDaForma(null)).toBeNull();
     expect(rotuloDaForma(undefined)).toBeNull();
     expect(rotuloDaForma('boleto')).toBeNull();
+  });
+});
+
+describe('ordenarPendencias', () => {
+  it('entrega marcada primeiro, da mais próxima; depois as sem data, da venda mais antiga', () => {
+    const ordem = ordenarPendencias([
+      { id: 'a', data: '2026-10-01', delivery_date: null },
+      { id: 'b', data: '2026-09-28', delivery_date: '2026-10-10' },
+      { id: 'c', data: '2026-09-15', delivery_date: null },
+      { id: 'd', data: '2026-10-02', delivery_date: '2026-10-06' },
+    ]).map((v) => v.id);
+    expect(ordem).toEqual(['d', 'b', 'c', 'a']);
   });
 });
