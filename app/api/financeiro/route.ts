@@ -12,8 +12,86 @@ import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { calcularDRE, type SaidaParaDRE, type VendaParaDRE } from '@/lib/dre';
 import { hojeBrasil, motivoDataDeVendaInvalida, partesHojeBrasil, recorteDoMes } from '@/lib/datas';
 import { parsearMoeda } from '@/lib/moeda';
+import {
+  ancoraVigente,
+  calcularSaldoDoMes,
+  type Ancora,
+  type EntradaDeCaixa,
+  type SaldoDoMes,
+} from '@/lib/saldo';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const SELECT_SAIDA = 'id, data, descricao, valor, categoria, recorrente, observacao';
+
+/**
+ * Saldo em caixa do mês (ver lib/saldo.ts).
+ *
+ * Nunca derruba a tela: se a tabela ainda não existir (migration 022 não
+ * aplicada) ou a consulta falhar, o DRE continua aparecendo e o cartão de
+ * saldo some. O DRE é o que já existia; o saldo é o recurso novo, e não pode
+ * levar o antigo junto quando falha.
+ */
+async function saldoDoMes(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  alvo: { ano: number; mes: number },
+  fimDoMes: string,
+): Promise<{ saldo: SaldoDoMes | null; disponivel: boolean }> {
+  try {
+    const { data: linhas, error } = await supabase
+      .from('saldos_iniciais')
+      .select('ano, mes, valor')
+      .eq('workspace_id', workspaceId);
+    if (error) throw error;
+
+    const ancoras: Ancora[] = (linhas || []).map((l) => ({
+      ano: Number(l.ano),
+      mes: Number(l.mes),
+      valor: Number(l.valor) || 0,
+    }));
+    const ancora = ancoraVigente(ancoras, alvo);
+    if (!ancora) return { saldo: null, disponivel: true };
+
+    const inicio = `${ancora.ano}-${String(ancora.mes).padStart(2, '0')}-01`;
+    const [{ data: vendas, error: vendasError }, { data: saidas, error: saidasError }] =
+      await Promise.all([
+        supabase
+          .from('vendas_diarias')
+          .select('data, faturamento_total, shipping_cost, status')
+          .eq('workspace_id', workspaceId)
+          .neq('status', 'cancelada')
+          .gte('data', inicio)
+          .lte('data', fimDoMes),
+        supabase
+          .from('saidas_financeiras')
+          .select('data, valor')
+          .eq('workspace_id', workspaceId)
+          .gte('data', inicio)
+          .lte('data', fimDoMes),
+      ]);
+    if (vendasError || saidasError) throw vendasError ?? saidasError;
+
+    // Entra só a venda PAGA: "a receber" ainda não está na conta. O frete sai
+    // de toda venda que vale, paga ou não — quem entrega cobra do mesmo jeito.
+    const entradas: EntradaDeCaixa[] = (vendas || [])
+      .filter((v) => v.status === 'pago')
+      .map((v) => ({ data: v.data, valor: Number(v.faturamento_total) || 0 }));
+    const saidasDeCaixa: EntradaDeCaixa[] = [
+      ...(saidas || []).map((s) => ({ data: s.data, valor: Number(s.valor) || 0 })),
+      ...(vendas || [])
+        .filter((v) => Number(v.shipping_cost) > 0)
+        .map((v) => ({ data: v.data, valor: Number(v.shipping_cost) || 0 })),
+    ];
+
+    return {
+      saldo: calcularSaldoDoMes(ancoras, entradas, saidasDeCaixa, alvo),
+      disponivel: true,
+    };
+  } catch (error) {
+    console.error('Não foi possível calcular o saldo do mês:', error);
+    return { saldo: null, disponivel: false };
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,29 +114,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Mês inválido.' }, { status: 400 });
     }
 
-    const [{ data: saidas, error: saidasError }, { data: vendas, error: vendasError }] =
-      await Promise.all([
-        supabase
-          .from('saidas_financeiras')
-          .select(SELECT_SAIDA)
-          .eq('workspace_id', user.id)
-          .gte('data', recorte.inicio)
-          .lte('data', recorte.fim)
-          .order('data', { ascending: false }),
-        supabase
-          .from('vendas_diarias')
-          .select(
-            `faturamento_total, shipping_cost,
-             venda_itens ( quantidade, produto_id, products ( cost ) )`,
-          )
-          .eq('workspace_id', user.id)
-          // Venda cancelada não entra no DRE pelo mesmo motivo de não entrar no
-          // Raio-X: ela não aconteceu. Filtrado na origem para que nenhuma
-          // consulta nova esqueça.
-          .neq('status', 'cancelada')
-          .gte('data', recorte.inicio)
-          .lte('data', recorte.fim),
-      ]);
+    const [
+      { data: saidas, error: saidasError },
+      { data: vendas, error: vendasError },
+      saldo,
+    ] = await Promise.all([
+      supabase
+        .from('saidas_financeiras')
+        .select(SELECT_SAIDA)
+        .eq('workspace_id', user.id)
+        .gte('data', recorte.inicio)
+        .lte('data', recorte.fim)
+        .order('data', { ascending: false }),
+      supabase
+        .from('vendas_diarias')
+        .select(
+          `faturamento_total, shipping_cost,
+           venda_itens ( quantidade, produto_id, products ( cost ) )`,
+        )
+        .eq('workspace_id', user.id)
+        // Venda cancelada não entra no DRE pelo mesmo motivo de não entrar no
+        // Raio-X: ela não aconteceu. Filtrado na origem para que nenhuma
+        // consulta nova esqueça.
+        .neq('status', 'cancelada')
+        .gte('data', recorte.inicio)
+        .lte('data', recorte.fim),
+      saldoDoMes(supabase, user.id, { ano, mes }, recorte.fim),
+    ]);
 
     if (saidasError || vendasError) {
       return NextResponse.json(
@@ -100,6 +182,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       saidas: saidas || [],
       dre: calcularDRE(vendasParaDRE, saidasParaDRE),
+      saldo: saldo.saldo,
+      saldo_disponivel: saldo.disponivel,
       periodo: { ano, mes },
     });
   } catch (error) {
