@@ -177,3 +177,41 @@ export function ordenarPendencias<
     return a.data < b.data ? -1 : a.data > b.data ? 1 : 0;
   });
 }
+
+/**
+ * BAIXA DE ENTREGAS ANTIGAS — quais vendas podem ser marcadas como entregues
+ * de uma vez.
+ *
+ * Existe por causa da migration 013: TODA venda nasceu "a entregar", inclusive
+ * as que foram levadas na hora. Quando a lista de pendências passou a juntar
+ * todos os meses (out/2026), essas vendas antigas apareceram aos montes, e
+ * resolver uma por uma seria inviável.
+ *
+ * A regra é conservadora de propósito, porque marcar como entregue o que
+ * ainda não saiu é perder uma entrega de vista:
+ *
+ * - só a ENTREGA muda; pagamento, valores e itens não são tocados;
+ * - cancelada não entra (já não pende nada);
+ * - venda com entrega agendada para HOJE ou depois nunca entra, por mais
+ *   antiga que seja — é o caso da cesta fechada em setembro para 06/10;
+ * - só entram vendas feitas até a data que a aluna escolher.
+ *
+ * A rota aplica o MESMO filtro na consulta; esta função é a mesma regra para
+ * a tela contar antes de confirmar.
+ */
+export function entraNaBaixaDeEntregas(
+  venda: {
+    data: string;
+    status: string;
+    entrega: string;
+    delivery_date?: string | null;
+  },
+  ate: string,
+  hoje: string,
+): boolean {
+  if (venda.status === 'cancelada') return false;
+  if (venda.entrega !== 'pendente') return false;
+  if (venda.data > ate) return false;
+  if (venda.delivery_date && venda.delivery_date >= hoje) return false;
+  return true;
+}

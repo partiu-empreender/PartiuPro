@@ -23,7 +23,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { gravarMemoria, lerMemoria } from '@/lib/cache-memoria';
-import { hojeBrasil, motivoDataDeVendaInvalida, nomeDoMes, partesHojeBrasil } from '@/lib/datas';
+import {
+  hojeBrasil,
+  motivoDataDeVendaInvalida,
+  nomeDoMes,
+  partesHojeBrasil,
+  somarDias,
+} from '@/lib/datas';
 import {
   atalhosDePeriodo,
   motivoPeriodoInvalido,
@@ -37,6 +43,7 @@ import {
   ROTULO_ENTREGA,
   ROTULO_FORMA_PAGAMENTO,
   ROTULO_PAGAMENTO,
+  entraNaBaixaDeEntregas,
   ordenarPendencias,
   resumoDaSituacao,
   rotuloDaForma,
@@ -115,6 +122,13 @@ const diaMesBR = (iso: string) => iso.split('-').reverse().slice(0, 2).join('/')
  * dezenas de linhas empurrando o resto da aba para baixo.
  */
 const PENDENCIAS_VISIVEIS = 8;
+
+/**
+ * Data sugerida na baixa de entregas antigas: vendas de até 30 dias atrás.
+ * Um mês é folga suficiente para a entrega comum já ter acontecido; quem
+ * quiser ir além ou ficar aquém troca a data no diálogo.
+ */
+const DIAS_PARA_ENTREGA_ANTIGA = 30;
 
 type TipoProduto = 'produto' | 'adicional';
 
@@ -268,6 +282,21 @@ export default function DashboardPage() {
   // duas vezes no mesmo dia.
   const [vendaParaExcluir, setVendaParaExcluir] = useState<VendaDiaria | null>(null);
 
+  // Baixa de entregas antigas (ver `entraNaBaixaDeEntregas`). O diálogo conta
+  // NO SERVIDOR antes de confirmar: a lista da tela tem teto de 200, e o
+  // número mostrado precisa ser o que de fato vai mudar.
+  const [baixaAberta, setBaixaAberta] = useState(false);
+  const [baixaAte, setBaixaAte] = useState('');
+  const [baixaQuantidade, setBaixaQuantidade] = useState<number | null>(null);
+  const [baixaErro, setBaixaErro] = useState('');
+  const [aplicandoBaixa, setAplicandoBaixa] = useState(false);
+  // Ids marcados na última baixa, para o "Desfazer". Some quando ela fecha o
+  // aviso: desfazer depois de mexer em outras vendas confundiria mais do que
+  // ajudaria, e cada venda continua editável uma a uma.
+  const [baixaFeita, setBaixaFeita] = useState<{ ids: string[]; quantidade: number } | null>(
+    null,
+  );
+
   // Venda em edicao. Existe porque errar a data era um beco sem saida: a venda
   // ia pro mes errado, bagunçava faturamento e meta, e nao havia como corrigir
   // sem excluir e refazer — perdendo etiquetas e o vinculo com a cliente.
@@ -399,6 +428,87 @@ export default function DashboardPage() {
   const mostrarDataNoPeriodo = (data: string) => {
     const atual = periodoRef.current;
     if (data < atual.de || data > atual.ate) setPeriodo({ de: data, ate: data });
+  };
+
+  const abrirBaixa = () => {
+    setBaixaAte(somarDias(hojeBrasil(), -DIAS_PARA_ENTREGA_ANTIGA));
+    setBaixaQuantidade(null);
+    setBaixaErro('');
+    setBaixaAberta(true);
+  };
+
+  // Conta quantas vendas a baixa vai marcar, a cada troca de data. Nada muda
+  // no banco aqui (`simular`).
+  useEffect(() => {
+    if (!baixaAberta) return;
+    const motivo = motivoDataDeVendaInvalida(baixaAte);
+    if (motivo) {
+      setBaixaErro(motivo);
+      setBaixaQuantidade(null);
+      return;
+    }
+    setBaixaErro('');
+    setBaixaQuantidade(null);
+    let ativo = true;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/vendas/entregas-antigas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ate: baixaAte, simular: true }),
+        });
+        const result = await res.json();
+        if (!ativo) return;
+        if (!res.ok) setBaixaErro(result.error || 'Não foi possível contar as vendas.');
+        else setBaixaQuantidade(result.quantidade ?? 0);
+      } catch {
+        if (ativo) setBaixaErro('Não foi possível contar as vendas.');
+      }
+    }, 250);
+    return () => {
+      ativo = false;
+      clearTimeout(timer);
+    };
+  }, [baixaAberta, baixaAte]);
+
+  const aplicarBaixa = async () => {
+    setAplicandoBaixa(true);
+    setBaixaErro('');
+    try {
+      const res = await fetch('/api/vendas/entregas-antigas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ate: baixaAte }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setBaixaErro(result.error || 'Não foi possível marcar as entregas.');
+        return;
+      }
+      setBaixaAberta(false);
+      setBaixaFeita({ ids: result.ids || [], quantidade: result.quantidade ?? 0 });
+      await recarregarTudo();
+    } catch {
+      setBaixaErro('Não foi possível marcar as entregas. Tente novamente.');
+    } finally {
+      setAplicandoBaixa(false);
+    }
+  };
+
+  const desfazerBaixa = async () => {
+    if (!baixaFeita || baixaFeita.ids.length === 0) return;
+    try {
+      const res = await fetch('/api/vendas/entregas-antigas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ desfazer: baixaFeita.ids }),
+      });
+      if (!res.ok) return;
+      setBaixaFeita(null);
+      await recarregarTudo();
+    } catch {
+      // O aviso continua na tela; ela pode tentar de novo.
+    }
   };
 
   // Recarrega ao trocar de mês. O intervalo é recriado junto de propósito: sem
@@ -838,6 +948,11 @@ export default function DashboardPage() {
     .reduce((soma, v) => soma + v.faturamento_total, 0);
 
   const hoje = hojeBrasil();
+  // O atalho da baixa só aparece quando há o que baixar pela data sugerida —
+  // senão seria um botão que abre um diálogo dizendo "nenhuma venda".
+  const temEntregaAntiga = vendasPendentes.some((v) =>
+    entraNaBaixaDeEntregas(v, somarDias(hoje, -DIAS_PARA_ENTREGA_ANTIGA), hoje),
+  );
   const periodoEhUmDia = periodo.de === periodo.ate;
   const resumoPeriodo = resumoDoPeriodo(vendasDoPeriodo);
   const atalhos = atalhosDePeriodo(hoje);
@@ -1375,6 +1490,38 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="hoje" className="space-y-4 mt-4">
+            {baixaFeita && (
+              <div className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4">
+                <p className="text-sm text-emerald-900">
+                  {baixaFeita.quantidade === 1
+                    ? '1 venda marcada como entregue.'
+                    : `${baixaFeita.quantidade} vendas marcadas como entregues.`}
+                </p>
+                <div className="flex shrink-0 gap-1">
+                  {baixaFeita.ids.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-emerald-900"
+                      onClick={desfazerBaixa}
+                    >
+                      Desfazer
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-emerald-900"
+                    onClick={() => setBaixaFeita(null)}
+                  >
+                    Ok
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* O que ainda pede ação, de qualquer mês. Só aparece quando há
                 pendência: um cartão vazio dizendo "nada pendente" seria ruído
                 em toda visita. */}
@@ -1434,6 +1581,15 @@ export default function DashboardPage() {
                         ? 'Mostrar menos'
                         : `Ver todas (${vendasPendentes.length})`}
                     </Button>
+                  )}
+                  {temEntregaAntiga && (
+                    <button
+                      type="button"
+                      onClick={abrirBaixa}
+                      className="w-full pt-1 text-center text-xs text-amber-900 underline-offset-2 hover:underline"
+                    >
+                      Já entregou as vendas antigas? Marcar de uma vez
+                    </button>
                   )}
                 </CardContent>
               </Card>
@@ -2282,6 +2438,68 @@ export default function DashboardPage() {
           Os dois eixos aparecem juntos porque é assim que ela pensa a venda
           ("recebi mas não entreguei"), e separados em duas linhas porque são
           independentes — ver lib/situacao-venda.ts. */}
+      {/* Baixa de entregas antigas. Mostra a contagem real antes de
+          confirmar, e diz com todas as letras o que NÃO muda: é isso que
+          deixa a aluna segura para apertar o botão. */}
+      <Dialog open={baixaAberta} onOpenChange={(aberto) => !aplicandoBaixa && setBaixaAberta(aberto)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Marcar entregas antigas como entregues</DialogTitle>
+            <DialogDescription>
+              Para as vendas antigas que já foram entregues, mas continuam aparecendo como
+              &quot;a entregar&quot;.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <div className="space-y-2">
+              <Label htmlFor="baixa-ate">Vendas feitas até</Label>
+              <Input
+                id="baixa-ate"
+                type="date"
+                max={hoje}
+                value={baixaAte}
+                onChange={(e) => setBaixaAte(e.target.value)}
+              />
+            </div>
+            <ul className="space-y-1 text-muted-foreground">
+              <li>• Muda só a entrega. Pagamento, valores e itens continuam iguais.</li>
+              <li>• Vendas com entrega marcada para hoje ou depois ficam de fora.</li>
+              <li>• Dá para desfazer logo em seguida, ou mudar venda por venda depois.</li>
+            </ul>
+            {baixaErro ? (
+              <p className="text-destructive">{baixaErro}</p>
+            ) : baixaQuantidade === null ? (
+              <p className="text-muted-foreground">Contando...</p>
+            ) : (
+              <p className="font-medium">
+                {baixaQuantidade === 0
+                  ? 'Nenhuma venda a marcar até essa data.'
+                  : baixaQuantidade === 1
+                    ? '1 venda será marcada como entregue.'
+                    : `${baixaQuantidade} vendas serão marcadas como entregues.`}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={aplicandoBaixa}
+              onClick={() => setBaixaAberta(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={aplicandoBaixa || !baixaQuantidade || Boolean(baixaErro)}
+              onClick={aplicarBaixa}
+            >
+              {aplicandoBaixa ? 'Marcando...' : 'Marcar como entregues'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={situacaoEmEdicao !== null}
         onOpenChange={(aberto) => !aberto && setSituacaoEmEdicao(null)}

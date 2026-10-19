@@ -4,6 +4,7 @@ import {
   ehEntrega,
   ehFormaDePagamento,
   ehPagamento,
+  entraNaBaixaDeEntregas,
   ordenarPendencias,
   pendenciasDaVenda,
   resumoDaSituacao,
@@ -141,5 +142,38 @@ describe('ordenarPendencias', () => {
       { id: 'd', data: '2026-10-02', delivery_date: '2026-10-06' },
     ]).map((v) => v.id);
     expect(ordem).toEqual(['d', 'b', 'c', 'a']);
+  });
+});
+
+describe('entraNaBaixaDeEntregas', () => {
+  const hoje = '2026-10-08';
+  const ate = '2026-09-08';
+  const base = { data: '2026-08-15', status: 'pago', entrega: 'pendente', delivery_date: null };
+
+  it('venda antiga a entregar, sem entrega agendada, entra', () => {
+    expect(entraNaBaixaDeEntregas(base, ate, hoje)).toBe(true);
+  });
+
+  it('entrega agendada para hoje ou depois nunca entra, mesmo venda antiga', () => {
+    expect(entraNaBaixaDeEntregas({ ...base, delivery_date: '2026-10-08' }, ate, hoje)).toBe(false);
+    expect(entraNaBaixaDeEntregas({ ...base, delivery_date: '2026-10-20' }, ate, hoje)).toBe(false);
+  });
+
+  it('entrega agendada que já passou entra', () => {
+    expect(entraNaBaixaDeEntregas({ ...base, delivery_date: '2026-08-20' }, ate, hoje)).toBe(true);
+  });
+
+  it('venda depois da data escolhida não entra', () => {
+    expect(entraNaBaixaDeEntregas({ ...base, data: '2026-09-09' }, ate, hoje)).toBe(false);
+  });
+
+  it('cancelada, já entregue ou levada na hora não entra', () => {
+    expect(entraNaBaixaDeEntregas({ ...base, status: 'cancelada' }, ate, hoje)).toBe(false);
+    expect(entraNaBaixaDeEntregas({ ...base, entrega: 'entregue' }, ate, hoje)).toBe(false);
+    expect(entraNaBaixaDeEntregas({ ...base, entrega: 'nao_aplica' }, ate, hoje)).toBe(false);
+  });
+
+  it('a receber continua entrando: só a entrega muda, a cobrança fica', () => {
+    expect(entraNaBaixaDeEntregas({ ...base, status: 'pendente' }, ate, hoje)).toBe(true);
   });
 });
