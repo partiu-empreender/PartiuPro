@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import PricingCalculator from '@/components/PricingCalculator';
 import { calcularRelatorioMensal, type RelatorioMensal } from '@/lib/metrics';
 import PageShell from '@/components/shared/PageShell';
-import PageHeader from '@/components/shared/PageHeader';
+import TopoDaHome from '@/components/home/TopoDaHome';
+import { EVENTO_VER_PENDENCIAS } from '@/lib/notificacoes';
 import CartaoIndicador from '@/components/shared/CartaoIndicador';
 import LembretesDoDia from '@/components/shared/LembretesDoDia';
 import {
@@ -183,6 +184,34 @@ export default function DashboardPage() {
   const [catalogo, setCatalogo] = useState<ProdutoCatalogo[]>(emCache?.catalogo ?? []);
   const [loading, setLoading] = useState(emCache === undefined);
   const [activeTab, setActiveTab] = useState('relatorio');
+  // Muda a cada venda criada, editada ou excluída, pro topo da home refazer
+  // as contas junto com o resto da tela.
+  const [versaoDoTopo, setVersaoDoTopo] = useState(0);
+
+  // "Falta resolver" mora na aba Vendas do Período. O sininho e o cartão
+  // "Pra hoje" trazem pra cá: troca a aba e rola até a lista.
+  const verPendencias = () => {
+    setActiveTab('hoje');
+    window.setTimeout(() => {
+      document.getElementById('pendencias')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  useEffect(() => {
+    // Chegou de outra tela pelo sininho (`?ver=pendencias`). Lido de
+    // window.location, e não do useSearchParams, pelo mesmo motivo da tela
+    // de Clientes: evita embrulhar a página inteira num Suspense.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ver') === 'pendencias') {
+      verPendencias();
+      window.history.replaceState(null, '', '/dashboard');
+    }
+
+    // Já estava aqui e tocou no sininho.
+    window.addEventListener(EVENTO_VER_PENDENCIAS, verPendencias);
+    return () => window.removeEventListener(EVENTO_VER_PENDENCIAS, verPendencias);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showRegistroVendaModal, setShowRegistroVendaModal] = useState(false);
   // Só a primeira carga mostra "Carregando..." — as atualizações de 30 em 30s
   // acontecem em silêncio, senão a tela inteira pisca a cada polling.
@@ -391,7 +420,10 @@ export default function DashboardPage() {
 
   // Depois de criar, editar, cancelar ou excluir uma venda, as duas coisas
   // mudam: o Raio-X do mês e a lista do período.
-  const recarregarTudo = () => Promise.all([carregarMetricas(), carregarPeriodo()]);
+  const recarregarTudo = () => {
+    setVersaoDoTopo((v) => v + 1);
+    return Promise.all([carregarMetricas(), carregarPeriodo()]);
+  };
 
   // Leva o período até a data de uma venda que acabou de ser salva fora dele.
   // Sem isso a venda "some" da lista e parece que não foi gravada — e a aluna
@@ -952,15 +984,10 @@ export default function DashboardPage() {
   return (
     <>
       <PageShell>
-        <PageHeader
-          title="Dashboard de Vendas"
-          description="Visão geral do seu negócio em tempo real"
-          action={
-            <Button onClick={abrirModal} className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Registrar Venda
-            </Button>
-          }
+        <TopoDaHome
+          aoRegistrarVenda={abrirModal}
+          aoVerPendencias={verPendencias}
+          versao={versaoDoTopo}
         />
 
         {/* A agenda encontra a aluna aqui. Esta é a tela que ela abre todo dia
@@ -1379,7 +1406,7 @@ export default function DashboardPage() {
                 pendência: um cartão vazio dizendo "nada pendente" seria ruído
                 em toda visita. */}
             {vendasPendentes.length > 0 && (
-              <Card className="border-amber-200 bg-amber-50/60">
+              <Card id="pendencias" className="scroll-mt-28 border-amber-200 bg-amber-50/60">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">
                     Falta resolver ({vendasPendentes.length})
