@@ -14,7 +14,6 @@ import PageShell from '@/components/shared/PageShell';
 import TopoDaHome from '@/components/home/TopoDaHome';
 import { EVENTO_VER_PENDENCIAS } from '@/lib/notificacoes';
 import CartaoIndicador from '@/components/shared/CartaoIndicador';
-import LembretesDoDia from '@/components/shared/LembretesDoDia';
 import {
   Dialog,
   DialogContent,
@@ -194,6 +193,13 @@ export default function DashboardPage() {
     setActiveTab('hoje');
     window.setTimeout(() => {
       document.getElementById('pendencias')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  const verVendas = () => {
+    setActiveTab('hoje');
+    window.setTimeout(() => {
+      document.getElementById('abas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   };
 
@@ -987,13 +993,11 @@ export default function DashboardPage() {
         <TopoDaHome
           aoRegistrarVenda={abrirModal}
           aoVerPendencias={verPendencias}
+          aoVerVendas={verVendas}
+          aoAlterarVendas={recarregarTudo}
           versao={versaoDoTopo}
         />
 
-        {/* A agenda encontra a aluna aqui. Esta é a tela que ela abre todo dia
-            pra registrar venda; um lembrete que só existe em outra página
-            depende de alguém lembrar de ir olhar. */}
-        <LembretesDoDia />
 
         {avisoRetroativo && (
           <div className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4">
@@ -1010,7 +1014,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs id="abas" value={activeTab} onValueChange={setActiveTab} className="w-full scroll-mt-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="relatorio">Relatório do Mês</TabsTrigger>
             <TabsTrigger value="hoje">Vendas do Período</TabsTrigger>

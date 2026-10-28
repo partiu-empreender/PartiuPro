@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 // pra que a logo alinhe com a borda do conteúdo.
 
 export const LARGURAS = {
-  wide: 'max-w-6xl',
+  wide: 'max-w-7xl',
   narrow: 'max-w-2xl',
 } as const;
 

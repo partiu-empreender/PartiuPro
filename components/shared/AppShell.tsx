@@ -157,88 +157,85 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
       <div className="min-h-screen">
         <Fundo />
 
-        {/* O menu mora no topo: logo à esquerda, abas no meio, avisos e perfil
-            à direita. É uma barra de vidro só, presa no alto ao rolar, pra
-            que trocar de tela nunca exija voltar ao começo da página.
+        {/* O menu mora no topo, como na referência de out/2026: a logo grande
+            encostada à esquerda e, encostados à direita, as abas numa pílula,
+            o sininho e a foto. Sem barra por trás — cada peça flutua sozinha
+            sobre o fundo.
 
             As abas aparecem a partir de `xl`: são nove, e abaixo disso elas
             não cabem sem espremer o texto. Até lá, o botão de menu abre a
             gaveta com a lista completa. */}
-        <header className="sticky top-0 z-40 pt-3 sm:pt-4">
-          <div className={cn(SHELL_X, LARGURAS.wide)}>
-            <div className="vidro flex h-16 items-center gap-2 rounded-full pl-3 pr-2 sm:gap-3 sm:pl-5">
-              <button
-                type="button"
-                onClick={() => setMenuAberto(true)}
-                aria-label="Abrir menu"
-                className="rounded-full p-2 text-foreground transition-colors hover:bg-accent hover:text-accent-foreground xl:hidden"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
+        <header className={cn(SHELL_X, LARGURAS.wide, 'flex items-center gap-2 pb-2 pt-5 sm:gap-3 sm:pt-6')}>
+          <button
+            type="button"
+            onClick={() => setMenuAberto(true)}
+            aria-label="Abrir menu"
+            className="vidro flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-white xl:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
 
-              <Link
-                href="/dashboard"
-                aria-label="Partiu Empreender — início"
-                className="shrink-0"
-                onClick={() => setDestinoDoClique('/dashboard')}
-              >
-                {/* No claro a logo usa o roxo da marca, herdado por currentColor. */}
-                <LogoPartiu className="w-28 text-primary sm:w-36" />
-              </Link>
+          <Link
+            href="/dashboard"
+            aria-label="Partiu Empreender — início"
+            className="min-w-0 shrink"
+            onClick={() => setDestinoDoClique('/dashboard')}
+          >
+            {/* No claro a logo usa o roxo da marca, herdado por currentColor. */}
+            <LogoPartiu className="w-40 text-primary sm:w-56 xl:w-60" />
+          </Link>
 
-              <nav
-                aria-label="Menu principal"
-                className="mx-auto hidden items-center gap-0.5 rounded-full bg-white/60 p-1 xl:flex"
-              >
-                {links.map((link) => {
-                  const ativo = estaAtivo(rotaAtual, link.href);
-                  return (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      aria-current={ativo ? 'page' : undefined}
-                      onClick={() => setDestinoDoClique(link.href)}
-                      className={cn(
-                        'whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-medium transition-colors',
-                        ativo
-                          ? 'bg-sidebar text-sidebar-foreground shadow-soft'
-                          : 'text-muted-foreground hover:bg-white hover:text-foreground',
-                      )}
-                    >
-                      {link.label}
-                    </Link>
-                  );
-                })}
-              </nav>
-
-              <div className="ml-auto flex items-center gap-2 xl:ml-0">
-                <Sininho />
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    aria-label={'Conta de ' + primeiroNome}
-                    className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-2.5">
+            <nav
+              aria-label="Menu principal"
+              className="vidro hidden items-center gap-0.5 rounded-full p-1.5 xl:flex"
+            >
+              {links.map((link) => {
+                const ativo = estaAtivo(rotaAtual, link.href);
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    aria-current={ativo ? 'page' : undefined}
+                    onClick={() => setDestinoDoClique(link.href)}
+                    className={cn(
+                      'whitespace-nowrap rounded-full px-3.5 py-2.5 text-[13px] font-medium transition-colors',
+                      ativo
+                        ? 'bg-sidebar text-sidebar-foreground shadow-soft'
+                        : 'text-foreground/75 hover:bg-white hover:text-foreground',
+                    )}
                   >
-                    {avatar('h-10 w-10 text-sm')}
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <div className="px-2.5 py-2">
-                      <p className="truncate text-sm font-semibold">{nome}</p>
-                      {email && <p className="truncate text-xs text-muted-foreground">{email}</p>}
-                    </div>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/dashboard/perfil" className="flex items-center gap-2">
-                        <User className="h-4 w-4" /> Meu perfil
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={sair} className="flex items-center gap-2">
-                      <LogOut className="h-4 w-4" /> Sair
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
+                    {link.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <Sininho className="h-11 w-11 sm:h-12 sm:w-12" />
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label={'Conta de ' + primeiroNome}
+                className="vidro flex h-11 w-11 items-center justify-center rounded-full p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-12 sm:w-12"
+              >
+                {avatar('h-full w-full text-sm ring-0')}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-white">
+                <div className="px-2.5 py-2">
+                  <p className="truncate text-sm font-semibold">{nome}</p>
+                  {email && <p className="truncate text-xs text-muted-foreground">{email}</p>}
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/perfil" className="flex items-center gap-2">
+                    <User className="h-4 w-4" /> Meu perfil
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={sair} className="flex items-center gap-2">
+                  <LogOut className="h-4 w-4" /> Sair
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 

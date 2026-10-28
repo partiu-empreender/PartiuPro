@@ -3,6 +3,9 @@ import { getRouteHandlerSupabaseClient } from '@/lib/supabase-server';
 import { hojeBrasil } from '@/lib/datas';
 import { situacaoDasVendas } from '@/lib/notificacoes';
 
+// Depende da sessão (cookies): nunca pode ser gerada uma vez no build.
+export const dynamic = 'force-dynamic';
+
 /**
  * Quanto das vendas pede ação, pro sininho do topo.
  *

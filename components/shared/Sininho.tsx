@@ -56,8 +56,8 @@ function gravarVistos(ids: string[]) {
 export default function Sininho({ className }: { className?: string }) {
   const pathname = usePathname();
   const hoje = hojeBrasil();
-  // Mesmo pedido do cartão "Pra falar hoje" do Dashboard: os dois dividem o
-  // cache, então o sininho não custa uma segunda ida ao servidor.
+  // Só o resumo interessa aqui (quantos hoje, quantos atrasados), então o
+  // pedido vai só até hoje.
   const { resumo, recarregar } = usarLembretes({ ate: hoje });
   const [vendas, setVendas] = useState<SituacaoDasVendas | null>(null);
   const [vistos, setVistos] = useState<string[]>([]);

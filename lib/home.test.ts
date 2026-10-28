@@ -59,6 +59,7 @@ describe('resumoDoMes', () => {
       '2026-03-31',
     );
     expect(resumo.vendidoAntes).toBe(200);
+    expect(resumo.diaLimiteAnterior).toBe(28);
     expect(resumo.variacao).toBe(-50);
   });
 

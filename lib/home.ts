@@ -35,6 +35,8 @@ export interface ResumoDoMes {
   quantidade: number;
   /** Vendido no mês passado, do dia 1º até o mesmo dia de hoje. */
   vendidoAntes: number;
+  /** Até que dia o mês passado entra na comparação (o de hoje, ou o último dele). */
+  diaLimiteAnterior: number;
   /** Variação contra o mesmo período do mês passado. null quando não há base. */
   variacao: number | null;
   /** Faturamento de cada dia do mês até hoje (índice 0 = dia 1º). */
@@ -85,6 +87,7 @@ export function resumoDoMes(vendas: VendaParaResumo[], hoje: string): ResumoDoMe
     vendido,
     quantidade,
     vendidoAntes,
+    diaLimiteAnterior: diaLimite,
     variacao: vendidoAntes > 0 ? ((vendido - vendidoAntes) / vendidoAntes) * 100 : null,
     porDia,
     mes: nomeDoMes(mes),
