@@ -70,6 +70,7 @@ export async function GET() {
       { count: novosNoMes },
       { data: aReceber },
       { data: entregas },
+      { data: encontros },
     ] = await Promise.all([
       totaisDosMeses,
       supabase
@@ -121,6 +122,14 @@ export async function GET() {
         .gte('delivery_date', somarDias(hoje, -DIAS_DE_ENTREGA_ATRASADA))
         .lte('delivery_date', fimDaSemana)
         .order('delivery_date', { ascending: true }),
+      // Da semana em diante: a agenda da semana mostra os dela, e o
+      // "próximo encontro" pode estar mais pra frente.
+      supabase
+        .from('encontros')
+        .select('id, titulo, descricao, inicio, duracao_minutos, link')
+        .gte('inicio', `${semana[0]?.data ?? hoje}T00:00:00-03:00`)
+        .order('inicio', { ascending: true })
+        .limit(10),
     ]);
 
     if (erroDoMes) {
@@ -164,6 +173,7 @@ export async function GET() {
       },
       // Atrasada só interessa enquanto não foi entregue; a da semana aparece
       // de qualquer jeito, pra agenda mostrar o que já saiu.
+      encontros: encontros || [],
       entregas: (entregas || [])
         .filter((e) => e.entrega === 'pendente' || e.delivery_date >= (semana[0]?.data ?? hoje))
         .map((e) => ({

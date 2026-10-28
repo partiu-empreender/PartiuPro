@@ -78,3 +78,26 @@ describe('montarAvisos', () => {
     expect(id('2026-10-13')).toBe(id('2026-10-14'));
   });
 });
+
+describe('avisos de encontro e desafio', () => {
+  const base = { hoje: '2026-11-04', lembretesHoje: 0, lembretesAtrasados: 0, vendas: null };
+  const encontro = { id: 'e1', titulo: 'Precificação', inicio: '2026-11-04T19:00:00-03:00', duracao_minutos: 60 };
+
+  it('encontro de hoje: avisa de manhã e de novo quando começa', () => {
+    const manha = montarAvisos({ ...base, encontrosHoje: [encontro], agora: new Date('2026-11-04T12:00:00Z') });
+    const hora = montarAvisos({ ...base, encontrosHoje: [encontro], agora: new Date('2026-11-04T21:50:00Z') });
+    expect(manha[0]?.titulo).toBe('Encontro hoje às 19h');
+    expect(hora[0]).toMatchObject({ titulo: 'Encontro começando agora: Precificação', tom: 'urgente' });
+    expect(manha[0]?.id).not.toBe(hora[0]?.id);
+  });
+
+  it('encontro que já acabou não avisa', () => {
+    const depois = montarAvisos({ ...base, encontrosHoje: [encontro], agora: new Date('2026-11-05T00:30:00Z') });
+    expect(depois.some((a) => a.id.startsWith('encontro'))).toBe(false);
+  });
+
+  it('desafio novo', () => {
+    const avisos = montarAvisos({ ...base, desafiosNovos: [{ id: 'd1', titulo: '7 dias de stories' }] });
+    expect(avisos.find((a) => a.id === 'desafio:d1')?.titulo).toBe('Desafio novo: 7 dias de stories');
+  });
+});

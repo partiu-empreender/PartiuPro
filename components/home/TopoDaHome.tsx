@@ -223,6 +223,7 @@ export default function TopoDaHome({
           semana={semana}
           lembretes={lembretes.filter((l) => l.data >= (semana[0]?.data ?? hoje))}
           entregas={painel?.entregas ?? []}
+          encontros={painel?.encontros ?? []}
         />
 
         {painel ? (

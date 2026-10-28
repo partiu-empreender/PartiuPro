@@ -15,6 +15,7 @@ import {
   EVENTO_VER_PENDENCIAS,
   LINK_PENDENCIAS,
   montarAvisos,
+  type EncontroDoAviso,
   type SituacaoDasVendas,
 } from '@/lib/notificacoes';
 import { cn } from '@/lib/utils';
@@ -60,6 +61,11 @@ export default function Sininho({ className }: { className?: string }) {
   // pedido vai só até hoje.
   const { resumo, recarregar } = usarLembretes({ ate: hoje });
   const [vendas, setVendas] = useState<SituacaoDasVendas | null>(null);
+  const [encontrosHoje, setEncontrosHoje] = useState<EncontroDoAviso[]>([]);
+  const [desafiosNovos, setDesafiosNovos] = useState<{ id: string; titulo: string }[]>([]);
+  // Relógio do sininho: o aviso de encontro muda de "hoje às 19h" pra
+  // "começando agora" sem ninguém recarregar a página.
+  const [agora, setAgora] = useState(() => new Date());
   const [vistos, setVistos] = useState<string[]>([]);
   const [aberto, setAberto] = useState(false);
 
@@ -69,6 +75,8 @@ export default function Sininho({ className }: { className?: string }) {
       if (!res.ok) return;
       const dados = await res.json();
       setVendas(dados.vendas ?? null);
+      setEncontrosHoje(dados.encontrosHoje ?? []);
+      setDesafiosNovos(dados.desafiosNovos ?? []);
     } catch {
       // Sem rede, fica com a última conta. O sininho não é lugar de erro.
     }
@@ -77,7 +85,11 @@ export default function Sininho({ className }: { className?: string }) {
   useEffect(() => {
     setVistos(lerVistos());
     const intervalo = window.setInterval(carregarVendas, INTERVALO_MS);
-    return () => window.clearInterval(intervalo);
+    const relogio = window.setInterval(() => setAgora(new Date()), 60 * 1000);
+    return () => {
+      window.clearInterval(intervalo);
+      window.clearInterval(relogio);
+    };
   }, [carregarVendas]);
 
   // Trocar de tela refaz as contas: quem acabou de marcar uma entrega como
@@ -98,8 +110,11 @@ export default function Sininho({ className }: { className?: string }) {
         lembretesHoje: resumo?.paraHoje ?? 0,
         lembretesAtrasados: resumo?.atrasados ?? 0,
         vendas,
+        encontrosHoje,
+        desafiosNovos,
+        agora,
       }),
-    [hoje, resumo, vendas],
+    [hoje, resumo, vendas, encontrosHoje, desafiosNovos, agora],
   );
 
   const novos = avisos.filter((aviso) => !vistos.includes(aviso.id)).length;

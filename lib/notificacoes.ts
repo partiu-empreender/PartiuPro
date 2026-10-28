@@ -1,4 +1,5 @@
 import { proximaDataComercial } from '@/lib/home';
+import { horaCurta, momentoDoEncontro } from '@/lib/agenda';
 
 // O sininho do topo.
 //
@@ -83,11 +84,23 @@ const MARCOS_DA_DATA = [60, 45, 30, 15, 7, 1];
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+export interface EncontroDoAviso {
+  id: string;
+  titulo: string;
+  inicio: string;
+  duracao_minutos: number;
+}
+
 export interface EntradaDosAvisos {
   hoje: string;
   lembretesHoje: number;
   lembretesAtrasados: number;
   vendas: SituacaoDasVendas | null;
+  /** Encontros da mentoria que acontecem hoje. */
+  encontrosHoje?: EncontroDoAviso[];
+  /** Desafios abertos há até 7 dias que ela ainda não concluiu. */
+  desafiosNovos?: { id: string; titulo: string }[];
+  agora?: Date;
 }
 
 /** A lista do sininho, do mais urgente pro menos. */
@@ -96,8 +109,28 @@ export function montarAvisos({
   lembretesHoje,
   lembretesAtrasados,
   vendas,
+  encontrosHoje = [],
+  desafiosNovos = [],
+  agora = new Date(),
 }: EntradaDosAvisos): Aviso[] {
   const avisos: Aviso[] = [];
+
+  // Encontro primeiro: é o único aviso com hora marcada. O id muda quando ele
+  // começa, pra o "começando agora" tocar de novo mesmo quem já viu o de manhã.
+  for (const encontro of encontrosHoje) {
+    const momento = momentoDoEncontro(encontro.inicio, encontro.duracao_minutos, agora);
+    if (momento === 'passou') continue;
+    avisos.push({
+      id: `encontro:${encontro.id}:${momento}`,
+      titulo:
+        momento === 'agora'
+          ? `Encontro começando agora: ${encontro.titulo}`
+          : `Encontro hoje às ${horaCurta(encontro.inicio)}`,
+      descricao: momento === 'agora' ? 'O link da sala está na Agenda.' : encontro.titulo,
+      href: '/dashboard/agenda',
+      tom: momento === 'agora' ? 'urgente' : 'normal',
+    });
+  }
 
   if (lembretesAtrasados > 0) {
     avisos.push({
@@ -145,6 +178,16 @@ export function montarAvisos({
       titulo: `${plural(vendas.aReceber, 'venda', 'vendas')} a receber`,
       descricao: `${brl(vendas.valorAReceber)} esperando pagamento.`,
       href: LINK_PENDENCIAS,
+      tom: 'normal',
+    });
+  }
+
+  for (const desafio of desafiosNovos) {
+    avisos.push({
+      id: `desafio:${desafio.id}`,
+      titulo: `Desafio novo: ${desafio.titulo}`,
+      descricao: 'Bora colocar a mão na massa?',
+      href: '/dashboard/mao-na-massa',
       tom: 'normal',
     });
   }

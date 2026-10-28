@@ -1,14 +1,16 @@
 'use client';
 
-import { CalendarHeart, Users } from 'lucide-react';
+import { CalendarHeart, Video } from 'lucide-react';
 import { Cartao, LinkSeta } from '@/components/home/base';
+import ProximoEncontro from '@/components/agenda/ProximoEncontro';
+import { horaCurta, partesEmBrasilia, proximoEncontro, type Encontro } from '@/lib/agenda';
 import { DATAS_COMEMORATIVAS } from '@/lib/datas-comemorativas';
 import { nomeDoMes, partesDaData } from '@/lib/datas';
 import type { Lembrete } from '@/lib/lembretes';
 import type { DiaDaSemana, EntregaDaHome } from '@/lib/painel';
 import { cn } from '@/lib/utils';
 
-type TipoDoEvento = 'entrega' | 'contato' | 'data';
+type TipoDoEvento = 'encontro' | 'entrega' | 'contato' | 'data';
 
 interface Evento {
   chave: string;
@@ -18,12 +20,14 @@ interface Evento {
 }
 
 const COR_DO_TIPO: Record<TipoDoEvento, string> = {
+  encontro: 'bg-primary text-primary-foreground border-primary',
   entrega: 'bg-amber-100 text-amber-900 border-amber-200',
   contato: 'bg-violet-100 text-violet-900 border-violet-200',
   data: 'bg-fuchsia-100 text-fuchsia-900 border-fuchsia-200',
 };
 
 const LEGENDA: { tipo: TipoDoEvento; rotulo: string }[] = [
+  { tipo: 'encontro', rotulo: 'Encontros' },
   { tipo: 'entrega', rotulo: 'Entregas' },
   { tipo: 'contato', rotulo: 'Contatos' },
   { tipo: 'data', rotulo: 'Datas comerciais' },
@@ -36,24 +40,28 @@ interface CartaoAgendaProps {
   semana: DiaDaSemana[];
   lembretes: Lembrete[];
   entregas: EntregaDaHome[];
+  encontros: Encontro[];
   className?: string;
 }
 
 /**
- * A semana num relance: entregas, contatos da agenda e datas comerciais,
- * dia a dia.
- *
- * "Próximo encontro" tem lugar reservado no topo. Os encontros da mentoria
- * ainda não existem no sistema — entram quando a Agenda (item 7 do Marco 1)
- * for feita, e aí aparecem aqui sem mudar o desenho.
+ * A semana num relance: encontros da mentoria, entregas, contatos da agenda
+ * e datas comerciais, dia a dia — com o próximo encontro em destaque no topo.
  */
-export default function CartaoAgenda({ semana, lembretes, entregas, className }: CartaoAgendaProps) {
+export default function CartaoAgenda({ semana, lembretes, entregas, encontros, className }: CartaoAgendaProps) {
   const primeiro = semana[0];
   const ultimo = semana[semana.length - 1];
 
   const porDia = new Map<string, Evento[]>(semana.map((d) => [d.data, []]));
   const anotar = (data: string, evento: Evento) => porDia.get(data)?.push(evento);
 
+  for (const e of encontros) {
+    anotar(partesEmBrasilia(e.inicio).data, {
+      chave: `n:${e.id}`,
+      tipo: 'encontro',
+      texto: `${horaCurta(e.inicio)} ${e.titulo}`,
+    });
+  }
   for (const e of entregas) {
     anotar(e.delivery_date, {
       chave: `e:${e.id}`,
@@ -88,23 +96,12 @@ export default function CartaoAgenda({ semana, lembretes, entregas, className }:
   return (
     <Cartao
       titulo="Agenda da semana"
-      canto={<LinkSeta href="/dashboard/lembretes" rotulo="Abrir a agenda" />}
+      canto={<LinkSeta href="/dashboard/agenda" rotulo="Abrir a agenda" />}
       className={className}
     >
       <p className="-mt-0.5 text-sm text-muted-foreground">{titulo}</p>
 
-      {/* Lugar do próximo encontro da mentoria. */}
-      <div className="mt-4 flex items-center gap-3 rounded-2xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <Users className="h-[18px] w-[18px]" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">Próximo encontro</p>
-          <p className="text-xs text-muted-foreground">
-            A data do próximo encontro da mentoria vai aparecer aqui.
-          </p>
-        </div>
-      </div>
+      <ProximoEncontro className="mt-4" compacto encontro={proximoEncontro(encontros)} />
 
       {/* No celular, uma lista só com os dias que têm alguma coisa; a partir
           de `sm`, as sete colunas, como um calendário de verdade. */}
@@ -198,6 +195,7 @@ function ChipDoEvento({ evento }: { evento: Evento }) {
       )}
     >
       {evento.tipo === 'data' && <CalendarHeart className="h-3 w-3 shrink-0" />}
+      {evento.tipo === 'encontro' && <Video className="h-3 w-3 shrink-0" />}
       <span className="truncate">{evento.texto}</span>
     </span>
   );

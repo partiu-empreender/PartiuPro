@@ -1,6 +1,7 @@
 import { diaDaSemana, nomeDoMes, partesDaData, recorteDoMes, somarDias } from '@/lib/datas';
 import { rotuloDaForma } from '@/lib/situacao-venda';
 import type { ResumoDoMes } from '@/lib/home';
+import type { Encontro } from '@/lib/agenda';
 
 // As contas dos cartões da home: os gráficos e as tabelas do topo do
 // Dashboard. Puro, sem banco, pra ser testado — a rota /api/home só busca
@@ -195,4 +196,6 @@ export interface PainelDaHome {
   clientes: { total: number; novosNoMes: number };
   aReceber: { quantidade: number; valor: number };
   entregas: EntregaDaHome[];
+  /** Encontros desta semana em diante (os próximos, até 10). */
+  encontros: Encontro[];
 }

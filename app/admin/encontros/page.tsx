@@ -1,0 +1,25 @@
+import { redirect } from 'next/navigation';
+import { getCurrentUserWithWorkspace, isCurrentUserAdmin } from '@/lib/supabase-server';
+import AppShell from '@/components/shared/AppShell';
+import AdminEncontros from './AdminEncontros';
+
+export default async function Page() {
+  const isAdmin = await isCurrentUserAdmin();
+  if (!isAdmin) {
+    redirect('/dashboard');
+  }
+
+  const result = await getCurrentUserWithWorkspace();
+  const nome = result?.userData?.full_name || result?.user?.email || 'Mentora';
+
+  return (
+    <AppShell
+      nome={nome}
+      email={result?.user?.email}
+      avatarUrl={result?.userData?.avatar_url}
+      isAdmin={isAdmin}
+    >
+      <AdminEncontros />
+    </AppShell>
+  );
+}

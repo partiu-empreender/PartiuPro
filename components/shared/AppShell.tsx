@@ -5,7 +5,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   BellRing,
+  CalendarDays,
   CalendarRange,
+  ChevronDown,
+  Hammer,
   HeartHandshake,
   LayoutDashboard,
   LogOut,
@@ -13,6 +16,7 @@ import {
   Package,
   ShieldCheck,
   Target,
+  Trophy,
   User,
   Users,
   Wallet,
@@ -58,14 +62,23 @@ export function usarConta(): Conta | null {
   return useContext(ContaContext);
 }
 
+// As abas que ficam à mostra no topo. Com as três do Marco 1 (Agenda, Mão na
+// Massa, Gamificação) eram doze, e não cabiam numa linha: as de uso menos
+// diário foram pro "Mais". Na gaveta do celular, todas aparecem soltas.
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/clientes', label: 'Clientes', icon: Users },
   { href: '/dashboard/lembretes', label: 'Lembretes', icon: BellRing },
   { href: '/dashboard/produtos', label: 'Catálogo', icon: Package },
+  { href: '/dashboard/financeiro', label: 'Financeiro', icon: Wallet },
+  { href: '/dashboard/agenda', label: 'Agenda', icon: CalendarDays },
+  { href: '/dashboard/mao-na-massa', label: 'Mão na Massa', icon: Hammer },
+  { href: '/dashboard/gamificacao', label: 'Gamificação', icon: Trophy },
+];
+
+const LINKS_DO_MAIS = [
   { href: '/dashboard/atendimentos', label: 'Atendimentos', icon: HeartHandshake },
   { href: '/dashboard/metas', label: 'Metas', icon: Target },
-  { href: '/dashboard/financeiro', label: 'Financeiro', icon: Wallet },
   { href: '/dashboard/historico', label: 'Histórico', icon: CalendarRange },
 ];
 
@@ -95,7 +108,9 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
   // conseguir lê-lo. Num efeito seria tarde demais.
   garantirDono(email);
 
-  const links = isAdmin ? [...LINKS, LINK_ADMIN] : LINKS;
+  const linksDoMais = isAdmin ? [...LINKS_DO_MAIS, LINK_ADMIN] : LINKS_DO_MAIS;
+  const todosOsLinks = [...LINKS, ...linksDoMais];
+  const maisAtivo = linksDoMais.some((link) => estaAtivo(rotaAtual, link.href));
   const primeiroNome = nome.trim().split(' ')[0] || nome;
   const inicial = nome.trim().charAt(0).toUpperCase() || '?';
 
@@ -190,7 +205,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
               aria-label="Menu principal"
               className="vidro hidden items-center gap-0.5 rounded-full p-1.5 xl:flex"
             >
-              {links.map((link) => {
+              {LINKS.map((link) => {
                 const ativo = estaAtivo(rotaAtual, link.href);
                 return (
                   <Link
@@ -199,7 +214,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
                     aria-current={ativo ? 'page' : undefined}
                     onClick={() => setDestinoDoClique(link.href)}
                     className={cn(
-                      'whitespace-nowrap rounded-full px-3.5 py-2.5 text-[13px] font-medium transition-colors',
+                      'whitespace-nowrap rounded-full px-3 py-2.5 text-[13px] font-medium transition-colors',
                       ativo
                         ? 'bg-sidebar text-sidebar-foreground shadow-soft'
                         : 'text-foreground/75 hover:bg-white hover:text-foreground',
@@ -209,6 +224,38 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
                   </Link>
                 );
               })}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={cn(
+                    'flex items-center gap-1 whitespace-nowrap rounded-full px-3 py-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    maisAtivo
+                      ? 'bg-sidebar text-sidebar-foreground shadow-soft'
+                      : 'text-foreground/75 hover:bg-white hover:text-foreground',
+                  )}
+                >
+                  Mais <ChevronDown className="h-3.5 w-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-white">
+                  {linksDoMais.map((link) => {
+                    const Icone = link.icon;
+                    return (
+                      <DropdownMenuItem key={link.href} asChild>
+                        <Link
+                          href={link.href}
+                          onClick={() => setDestinoDoClique(link.href)}
+                          className={cn(
+                            'flex items-center gap-2',
+                            estaAtivo(rotaAtual, link.href) && 'font-semibold text-primary',
+                          )}
+                        >
+                          <Icone className="h-4 w-4" /> {link.label}
+                        </Link>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </nav>
 
             <Sininho className="h-11 w-11 sm:h-12 sm:w-12" />
@@ -290,7 +337,7 @@ export default function AppShell({ nome, email, avatarUrl, isAdmin, children }: 
               </Link>
 
               <nav aria-label="Menu" className="flex flex-1 flex-col gap-1">
-                {links.map((link) => {
+                {todosOsLinks.map((link) => {
                   const Icone = link.icon;
                   const ativo = estaAtivo(rotaAtual, link.href);
                   return (

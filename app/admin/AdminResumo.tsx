@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils';
 import PageShell from '@/components/shared/PageShell';
 import PageHeader from '@/components/shared/PageHeader';
 import CartaoIndicador from '@/components/shared/CartaoIndicador';
-import { DollarSign, DoorOpen, ShoppingBag, Users } from 'lucide-react';
+import { CalendarDays, DollarSign, DoorOpen, Hammer, ShoppingBag, Users } from 'lucide-react';
+import { buttonVariants } from '@/components/ui/button';
 import { ROTULO_DO_PASSO, type PassoDoFunil, type ResumoDoFunil } from '@/lib/ativacao';
 
 interface AlunaResumo {
@@ -97,6 +98,18 @@ export default function AdminResumo() {
       <PageHeader
         title="Painel Administrativo"
         description="Onde cada aluna parou no caminho até a primeira venda (atualiza automaticamente)"
+        action={
+          // O que a equipe publica pras alunas: encontros (Agenda) e desafios
+          // (Mão na Massa).
+          <div className="flex flex-wrap gap-2">
+            <Link href="/admin/encontros" className={cn(buttonVariants({ variant: 'outline' }), 'gap-2')}>
+              <CalendarDays className="h-4 w-4" /> Encontros
+            </Link>
+            <Link href="/admin/desafios" className={cn(buttonVariants({ variant: 'outline' }), 'gap-2')}>
+              <Hammer className="h-4 w-4" /> Desafios
+            </Link>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
